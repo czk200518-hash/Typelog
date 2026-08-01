@@ -1,0 +1,602 @@
+/* ============================================
+   TypeLog 打字统计插件样式
+   ============================================ */
+
+/* ---- 状态栏 ---- */
+.typelog-statusbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: var(--font-ui-small);
+  user-select: none;
+}
+
+.typelog-sb-speed {
+  color: var(--interactive-accent);
+  font-weight: 600;
+}
+
+.typelog-sb-net {
+  color: var(--text-normal);
+}
+
+.typelog-sb-today {
+  color: var(--text-muted);
+}
+
+/* ============================================
+   详情卡片 Modal（新版 UI）
+   ============================================ */
+.typelog-modal {
+  padding: 8px 4px;
+}
+
+.typelog-modal .modal-content {
+  overflow-y: auto;
+  max-height: 70vh;
+}
+
+.typelog-modal .modal-title {
+  font-weight: 700;
+}
+
+/* 头部横幅 */
+.typelog-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--interactive-accent), var(--interactive-accent-hover));
+  color: var(--text-on-accent);
+}
+
+.typelog-modal-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.typelog-modal-logo svg {
+  width: 22px;
+  height: 22px;
+}
+
+.typelog-modal-titlebox {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.typelog-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-on-accent);
+}
+
+.typelog-modal-file {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  opacity: 0.9;
+  color: var(--text-on-accent);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.typelog-modal-file svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+/* 指标分组 */
+.typelog-modal-group {
+  margin-bottom: 14px;
+}
+
+.typelog-modal-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+}
+
+.typelog-modal-group-head svg {
+  width: 14px;
+  height: 14px;
+}
+
+.typelog-modal-group-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.typelog-modal-group-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+/* 指标卡片 */
+.typelog-modal-metric {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.typelog-modal-metric:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+}
+
+.typelog-modal-metric-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.typelog-modal-metric-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.typelog-modal-metric-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.typelog-modal-metric-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.typelog-modal-metric-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-normal);
+  white-space: nowrap;
+}
+
+.typelog-modal-metric-sub {
+  font-size: 9px;
+  color: var(--text-faint);
+  line-height: 1.3;
+}
+
+/* 配色（accent，提亮版） */
+.typelog-modal-metric.accent-blue {
+  border-top: 3px solid #3b82f6;
+}
+.typelog-modal-metric.accent-blue .typelog-modal-metric-icon {
+  background: rgba(59, 130, 246, 0.18);
+  color: #3b82f6;
+}
+
+.typelog-modal-metric.accent-green {
+  border-top: 3px solid #22c55e;
+}
+.typelog-modal-metric.accent-green .typelog-modal-metric-icon {
+  background: rgba(34, 197, 94, 0.18);
+  color: #22c55e;
+}
+
+.typelog-modal-metric.accent-orange {
+  border-top: 3px solid #f97316;
+}
+.typelog-modal-metric.accent-orange .typelog-modal-metric-icon {
+  background: rgba(249, 115, 22, 0.18);
+  color: #f97316;
+}
+
+.typelog-modal-metric.accent-red {
+  border-top: 3px solid #ef4444;
+}
+.typelog-modal-metric.accent-red .typelog-modal-metric-icon {
+  background: rgba(239, 68, 68, 0.18);
+  color: #ef4444;
+}
+
+.typelog-modal-metric.accent-purple {
+  border-top: 3px solid #a855f7;
+}
+.typelog-modal-metric.accent-purple .typelog-modal-metric-icon {
+  background: rgba(168, 85, 247, 0.18);
+  color: #a855f7;
+}
+
+/* 今日目标进度 */
+.typelog-modal-goals {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  padding: 12px 0 6px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.typelog-modal-goal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.typelog-modal-goal-ring {
+  width: 64px;
+  height: 64px;
+}
+
+.typelog-modal-goal-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.typelog-modal-goal-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.typelog-modal-goal-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ============================================
+   设置页（关于 / 功能描述）
+   ============================================ */
+.typelog-settings-about {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  background: var(--background-secondary);
+}
+
+.typelog-settings-about-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.typelog-settings-about-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--interactive-accent), var(--interactive-accent-hover));
+  color: var(--text-on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.typelog-settings-about-logo svg {
+  width: 24px;
+  height: 24px;
+}
+
+.typelog-settings-about-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.typelog-settings-about-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.typelog-settings-about-version {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.typelog-settings-about-desc {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-normal);
+  line-height: 1.6;
+}
+
+.typelog-settings-features {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.typelog-settings-feature {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.typelog-settings-feature-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--interactive-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.typelog-settings-feature-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.typelog-settings-feature-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.typelog-settings-feature-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.typelog-settings-feature-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.typelog-settings-tips {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--background-primary);
+  border: 1px dashed var(--background-modifier-border);
+}
+
+.typelog-settings-tips-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.typelog-settings-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-normal);
+  line-height: 1.8;
+}
+
+.typelog-settings-tip svg {
+  width: 10px;
+  height: 10px;
+  color: var(--interactive-accent);
+  flex-shrink: 0;
+}
+
+.typelog-settings-section {
+  font-weight: 700;
+  margin-top: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+/* ============================================
+   侧边栏面板
+   ============================================ */
+.typelog-dashboard {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  overflow-x: auto;
+  height: 100%;
+
+  zoom: 1.2;
+}
+
+.typelog-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.typelog-section-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-normal);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.typelog-overview-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.typelog-overview-item {
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.typelog-overview-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-normal);
+}
+
+.typelog-overview-label {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.typelog-goals {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  padding: 6px 0;
+}
+
+.typelog-goal-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.typelog-goal-ring {
+  width: 72px;
+}
+
+.typelog-goal-label {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.typelog-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.typelog-chart-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.typelog-chart-svg {
+  width: 100%;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.typelog-chart-svg svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.typelog-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 12px;
+  text-align: center;
+  background: var(--background-secondary);
+  border-radius: 8px;
+}
+
+.typelog-heatmap-range {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.typelog-heatmap {
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+}
+
+/* SVG 自带固定宽高，不随容器缩放 */
+.typelog-heatmap svg {
+  flex-shrink: 0;
+  width: auto;
+  height: auto;
+}
+
+/* 悬浮窗精简模式：小窗口仅显示今日三数据，不缩放 */
+.typelog-dashboard.typelog-compact {
+  zoom: 1;
+  padding: 8px 10px;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.typelog-dashboard.typelog-compact .typelog-overview-row {
+  flex-direction: column;
+  gap: 0;
+}
+
+.typelog-dashboard.typelog-compact .typelog-overview-item {
+  padding: 5px 2px;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.typelog-dashboard.typelog-compact .typelog-overview-item:last-child {
+  border-bottom: none;
+}
+
+.typelog-dashboard.typelog-compact .typelog-overview-label {
+  font-size: 11px;
+}
+
+.typelog-dashboard.typelog-compact .typelog-overview-value {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.typelog-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.typelog-legend-cell {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+/* ---- 悬浮窗宽度控制 ---- */
+.typelog-floating-view .workspace-leaf-content {
+  min-width: 340px;
+}
