@@ -9,7 +9,7 @@ describe("SessionStatsStore 会话统计", () => {
     expect(snap?.netStartWords).toBe(5); // 你好(2)+world(1)+插件(2)
   });
 
-  it("applyChange 更新净变化/毛输入/删除", () => {
+  it("applyChange 更新净变化/累计输入/删除", () => {
     const s = new SessionStatsStore();
     s.begin("/v/a.md", "", "strict", 0);
     s.applyChange({ typed: 10, deleted: 2, net: 8, isPaste: false, typedManual: 10 });
