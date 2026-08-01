@@ -63,7 +63,7 @@ export class StatsStore {
     }
   }
 
-  // 记录一次编辑变更（毛输入/删除）到三层
+  // 记录一次编辑变更（累计输入/删除）到三层
   recordChange(path: string, typed: number, deleted: number) {
     if (typed <= 0 && deleted <= 0) return;
     const now = new Date();
