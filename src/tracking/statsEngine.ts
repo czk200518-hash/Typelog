@@ -37,7 +37,7 @@ export class StatsEngine {
   private activeMachine: ActiveStateMachine;
   private speedTracker = new SpeedTracker();
   private currentPath: string | null = null;
-  private tickTimer: ReturnType<typeof setInterval> | null = null;
+  private tickTimer: number | null = null;
   private pomodoroStartedAt = 0;
   private pomodoroNotified = false;
   private fileOpenRef: EventRef | null = null;
@@ -65,7 +65,7 @@ export class StatsEngine {
     // 键盘/鼠标交互（非滚动）刷新活跃状态
     document.addEventListener("keydown", this.handleKeydown);
     document.addEventListener("mousedown", this.handleKeydown);
-    this.tickTimer = setInterval(this.tick, 1000);
+    this.tickTimer = window.setInterval(this.tick, 1000);
   }
 
   stop() {
@@ -74,7 +74,7 @@ export class StatsEngine {
     this.fileOpenRef = null;
     document.removeEventListener("keydown", this.handleKeydown);
     document.removeEventListener("mousedown", this.handleKeydown);
-    if (this.tickTimer) clearInterval(this.tickTimer);
+    if (this.tickTimer) window.clearInterval(this.tickTimer);
     this.tickTimer = null;
   }
 
