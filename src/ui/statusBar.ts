@@ -109,7 +109,7 @@ export class StatusBarDetailModal extends Modal {
     const wordsGroup = this.group(contentEl, "文字指标", "type");
     this.metric(wordsGroup, "current-net", "当前净字数", session ? formatNumber(session.netStartWords + session.deltaWords) : "—",
       session ? `${session.deltaWords >= 0 ? "+" : ""}${formatNumber(session.deltaWords)} 本次会话` : "", "blue");
-    this.metric(wordsGroup, "gross-typed", "文件毛字数", fileStats ? formatNumber(fileStats.grossTyped) : "—",
+    this.metric(wordsGroup, "gross-typed", "文件累计字数", fileStats ? formatNumber(fileStats.grossTyped) : "—",
       "累计键入（含删除/替换，永不回退）", "purple");
     this.metric(wordsGroup, "deleted", "删除/废弃字符", fileStats ? formatNumber(fileStats.deletedChars) : "—",
       "思维反复参考指标", "red");
