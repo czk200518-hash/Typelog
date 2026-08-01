@@ -12,9 +12,9 @@ function globToRegex(glob: string): RegExp {
   body = body.replace(/^\/+|\/+$/g, "");
   const escaped = body.replace(/[.+^${}()|[\]\\]/g, "\\$&");
   const re = escaped
-    .replace(/\*\*/g, "\u0000")
+    .replace(/\*\*/g, "\uFFFF")
     .replace(/\*/g, "[^/]*")
-    .replace(/\u0000/g, ".*")
+    .replace(/\uFFFF/g, ".*")
     .replace(/\?/g, "[^/]");
   // 无斜杠规则匹配任意层级（gitignore 语义）；含斜杠规则默认也匹配任意层级，除非锚定根
   const prefix = anchoredRoot ? "^" : "(^|.*/)";
