@@ -54,7 +54,7 @@ export class UiController {
   openDashboard() {
     const existing = this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_TYPELOG)[0];
     if (existing) {
-      this.plugin.app.workspace.revealLeaf(existing);
+      this.plugin.app.workspace.setActiveLeaf(existing, { focus: true });
       return;
     }
     const leaf = this.plugin.app.workspace.getRightLeaf(false);
@@ -78,7 +78,7 @@ export class UiController {
               view.setCompact(true);
               view.setPopout(true);
               // 渲染完成后按内容高度调整窗口尺寸
-              setTimeout(() => {
+              window.setTimeout(() => {
                 try {
                   const win = view.getOwnWindow();
                   if (win) {
@@ -90,7 +90,7 @@ export class UiController {
                 }
               }, 300);
             }
-            this.plugin.app.workspace.revealLeaf(leaf);
+            this.plugin.app.workspace.setActiveLeaf(leaf, { focus: true });
           })();
           return;
         }
