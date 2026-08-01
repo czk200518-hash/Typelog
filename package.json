@@ -1,0 +1,30 @@
+{
+  "name": "obsidian-typelog",
+  "version": "1.0.0",
+  "description": "双轨统计制打字统计插件：净产出与总劳动量、时间状态机、三层数据持久化、打字热力图",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "vitest run",
+    "install:vault": "powershell -ExecutionPolicy Bypass -File scripts/install.bat"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "typing",
+    "statistics",
+    "typelog"
+  ],
+  "author": "TypeLog",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.21.0",
+    "obsidian": "latest",
+    "tslib": "^2.6.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
+}
