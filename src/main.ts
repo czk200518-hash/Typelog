@@ -1,4 +1,4 @@
-import { MarkdownView, Notice, Plugin, TFile } from "obsidian";
+import { MarkdownView, Notice, Plugin } from "obsidian";
 import { TypeLogSettings, DEFAULT_SETTINGS } from "./core/settings";
 import { StatsStore } from "./core/statsStore";
 import { SessionStatsStore } from "./core/sessionStore";
@@ -151,7 +151,8 @@ export default class TypeLogPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const data = (await this.loadData()) as Partial<TypeLogSettings> | null;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
   }
 
   async saveSettings() {
