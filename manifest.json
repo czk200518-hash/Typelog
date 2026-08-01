@@ -1,9 +1,9 @@
 {
   "id": "typelog",
-  "name": "TypeLog 字迹",
+  "name": "TypeLog",
   "version": "1.0.0",
   "minAppVersion": "1.2.0",
-  "description": "工作统计插件：区分净输入与总输入量，精准追踪活跃编辑时间，数据持久化，支持打字速度、热力图与每日目标。",
+  "description": "Track typing activity in Obsidian: net vs total input, active editing time, typing speed, calendar heatmap, and daily goals.",
   "author": "8&6",
   "authorUrl": "",
   "isDesktopOnly": false
