@@ -1,5 +1,7 @@
 # TypeLog 字迹
 
+> **TypeLog** is an Obsidian typing statistics plugin. It separates **net output** from **total input**: every keystroke you type (including deletions and rewrites) is tracked, so your real writing effort is measured, not just what remains in the file. All data is stored locally.
+
 一个 Obsidian 打字统计插件。核心是分清楚两件事：文件里最终留下了多少字，以及你实际敲了多少字——毕竟删了重写也算劳动，普通的字数统计体现不出来。
 
 ## 能做什么
