@@ -2,7 +2,7 @@
 
 // 一次编辑变更的统计结果
 export interface ChangeStats {
-  // 新增字符数（毛，含粘贴）
+  // 新增字符数（累计，含粘贴）
   typed: number;
   // 删除字符数（含被替换掉的旧文本）
   deleted: number;
@@ -24,7 +24,7 @@ export interface SessionStats {
   netStartWords: number;
   // 会话净增减（字符级：新增-删除）
   deltaWords: number;
-  // 会话毛输入
+  // 会话累计输入
   grossTyped: number;
   // 会话删除字符数
   deletedChars: number;
@@ -40,7 +40,7 @@ export interface SessionStats {
 export interface FileStats {
   // 文件绝对路径（Key）
   path: string;
-  // 累计毛输入（永不回退）
+  // 累计输入（永不回退）
   grossTyped: number;
   // 累计删除字符数
   deletedChars: number;
@@ -54,13 +54,13 @@ export interface FileStats {
 
 // 全局层持久化统计（跨 vault）
 export interface GlobalStats {
-  // 终身累计毛输入
+  // 终身累计累计输入
   grossTypedTotal: number;
   // 终身累计删除字符数
   deletedCharsTotal: number;
   // 每日活跃时长 ms：YYYY-MM-DD -> ms
   dailyActiveByDate: Record<string, number>;
-  // 每日毛输入：YYYY-MM-DD -> chars
+  // 每日累计输入：YYYY-MM-DD -> chars
   dailyGrossByDate: Record<string, number>;
   // 每日峰值速度 CPM：YYYY-MM-DD -> cpm
   dailyPeakByDate: Record<string, number>;
