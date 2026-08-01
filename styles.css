@@ -10,6 +10,7 @@
   padding: 0 4px;
   font-size: var(--font-ui-small);
   user-select: none;
+  cursor: pointer;
 }
 
 .typelog-sb-speed {
@@ -415,6 +416,10 @@
   margin-top: 8px;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.typelog-settings-exclude {
+  width: 100%;
 }
 
 /* ============================================
