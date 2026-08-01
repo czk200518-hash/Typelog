@@ -24,7 +24,6 @@ export class StatusBarController {
     this.built = true;
     this.el = this.plugin.addStatusBarItem();
     this.el.addClass("typelog-statusbar");
-    this.el.style.cursor = "pointer";
     this.el.title = "TypeLog 字迹（点击查看详情）";
 
     this.speedEl = this.el.createSpan({ cls: "typelog-sb-speed" });
@@ -136,17 +135,17 @@ export class StatusBarDetailModal extends Modal {
     const todayWords = global.dailyGrossByDate[todayKey] ?? 0;
     const todayMs = global.dailyActiveByDate[todayKey] ?? 0;
     const goals = contentEl.createDiv({ cls: "typelog-modal-goals" });
-    const goalItem = (svg: string, label: string, sub: string) => {
+    const goalItem = (ratio: number, ringLabel: string, label: string, sub: string) => {
       const g = goals.createDiv({ cls: "typelog-modal-goal" });
-      g.createDiv({ cls: "typelog-modal-goal-ring" }).innerHTML = svg;
+      renderRingProgress(g.createDiv({ cls: "typelog-modal-goal-ring" }), ratio, ringLabel, 64);
       const t = g.createDiv({ cls: "typelog-modal-goal-text" });
       t.createDiv({ cls: "typelog-modal-goal-label" }).setText(label);
       t.createDiv({ cls: "typelog-modal-goal-sub" }).setText(sub);
     };
     const wordRatio = settings.dailyWordGoal > 0 ? todayWords / settings.dailyWordGoal : 0;
     const timeRatio = settings.dailyTimeGoalMin > 0 ? todayMs / (settings.dailyTimeGoalMin * 60_000) : 0;
-    goalItem(renderRingProgress(wordRatio, "字数", 64), "今日字数目标", `${formatNumber(todayWords)} / ${formatNumber(settings.dailyWordGoal)}`);
-    goalItem(renderRingProgress(timeRatio, "时长", 64), "今日时长目标", `${formatDuration(todayMs)} / ${settings.dailyTimeGoalMin}分钟`);
+    goalItem(wordRatio, "字数", "今日字数目标", `${formatNumber(todayWords)} / ${formatNumber(settings.dailyWordGoal)}`);
+    goalItem(timeRatio, "时长", "今日时长目标", `${formatDuration(todayMs)} / ${settings.dailyTimeGoalMin}分钟`);
   }
 
   private group(container: HTMLElement, title: string, icon: string) {
@@ -169,7 +168,7 @@ export class StatusBarDetailModal extends Modal {
 
   onClose() {
     if (this.timer !== null) {
-      clearInterval(this.timer);
+      window.clearInterval(this.timer);
       this.timer = null;
     }
     this.contentEl.empty();
