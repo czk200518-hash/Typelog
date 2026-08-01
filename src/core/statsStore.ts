@@ -30,7 +30,7 @@ export class StatsStore {
   private global: GlobalStats = emptyGlobal();
   private project: ProjectStatsData = { version: 1, grossTyped: 0, deletedChars: 0, activeTimeMs: 0, updatedAt: 0 };
   private dirty = false;
-  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private flushTimer: number | null = null;
   private flushing = false;
 
   constructor(
@@ -140,7 +140,7 @@ export class StatsStore {
   private markDirty() {
     this.dirty = true;
     if (this.flushTimer) return;
-    this.flushTimer = setTimeout(() => {
+    this.flushTimer = window.setTimeout(() => {
       this.flushTimer = null;
       void this.flush();
     }, 200);
