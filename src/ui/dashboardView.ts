@@ -65,7 +65,7 @@ export class DashboardView extends ItemView {
       this.resizeObserver = null;
     }
     if (this.resizeTimer !== null) {
-      clearTimeout(this.resizeTimer);
+      window.clearTimeout(this.resizeTimer);
       this.resizeTimer = null;
     }
     this.contentEl.empty();
@@ -84,7 +84,7 @@ export class DashboardView extends ItemView {
     let attempts = 0;
     const pullBack = () => {
       if (attempts++ >= 2) return;
-      setTimeout(() => {
+      window.setTimeout(() => {
         try {
           // 仅当 Obsidian 主窗口仍在前台时拉回，避免打断切换其他应用
           if (document.hasFocus() && !win.document.hidden) {
@@ -154,13 +154,13 @@ export class DashboardView extends ItemView {
       const todayMs = global.dailyActiveByDate[todayKey] ?? 0;
       const wordRatio = settings.dailyWordGoal > 0 ? todayWords / settings.dailyWordGoal : 0;
       const timeRatio = settings.dailyTimeGoalMin > 0 ? todayMs / (settings.dailyTimeGoalMin * 60_000) : 0;
-      const goalItem = (svg: string, label: string) => {
+      const goalItem = (ratio: number, ringLabel: string, text: string) => {
         const g = goals.createDiv({ cls: "typelog-goal-item" });
-        g.createDiv({ cls: "typelog-goal-ring" }).innerHTML = svg;
-        g.createDiv({ cls: "typelog-goal-label" }).setText(label);
+        renderRingProgress(g.createDiv({ cls: "typelog-goal-ring" }), ratio, ringLabel);
+        g.createDiv({ cls: "typelog-goal-label" }).setText(text);
       };
-      goalItem(renderRingProgress(wordRatio, "字数目标"), `${formatNumber(todayWords)} / ${formatNumber(settings.dailyWordGoal)}`);
-      goalItem(renderRingProgress(timeRatio, "时长目标"), `${formatDuration(todayMs)} / ${settings.dailyTimeGoalMin}分钟`);
+      goalItem(wordRatio, "字数目标", `${formatNumber(todayWords)} / ${formatNumber(settings.dailyWordGoal)}`);
+      goalItem(timeRatio, "时长目标", `${formatDuration(todayMs)} / ${settings.dailyTimeGoalMin}分钟`);
     }
 
     // ---- 当前文件 ----
@@ -186,7 +186,7 @@ export class DashboardView extends ItemView {
           chartBox.createDiv({ cls: "typelog-chart-label" }).setText("字数增长");
           const points = session.minuteSeries.map((s, i) => ({ x: i, y: s.delta }));
           const chartWidth = Math.max(240, (this.root.clientWidth || 320) - 20);
-          chartBox.createDiv({ cls: "typelog-chart-svg" }).innerHTML = renderLineChart(points, { width: chartWidth, height: 110 });
+          renderLineChart(chartBox.createDiv({ cls: "typelog-chart-svg" }), points, { width: chartWidth, height: 110 });
         } else {
           fileSection.createDiv({ cls: "typelog-empty" }).setText("编辑超过1分钟生成曲线");
         }
@@ -222,7 +222,7 @@ export class DashboardView extends ItemView {
         }
         cols.push(col);
       }
-      heatSection.createDiv({ cls: "typelog-heatmap" }).innerHTML = renderHeatmap({
+      renderHeatmap(heatSection.createDiv({ cls: "typelog-heatmap" }), {
         cols,
         monthLabel: `${year}年${month + 1}月`,
         cellSize: 20,
