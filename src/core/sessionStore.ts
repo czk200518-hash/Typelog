@@ -1,4 +1,4 @@
-// 会话级统计缓存：本次打开期间的净字数起点、净变化、毛输入、删除、活跃时长、峰值速度
+// 会话级统计缓存：本次打开期间的净字数起点、净变化、累计输入、删除、活跃时长、峰值速度
 import type { ChangeStats, SessionStats } from "../types";
 import type { CountMode } from "./settings";
 import { countText } from "./counter";
@@ -8,7 +8,7 @@ export interface MinuteSample {
   t: number;
   // 累计净变化
   delta: number;
-  // 累计毛输入
+  // 累计累计输入
   gross: number;
 }
 
