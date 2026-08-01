@@ -1,5 +1,5 @@
 // TypeLog 设置页
-import { App, PluginSettingTab, Setting, Notice, setIcon } from "obsidian";
+import { App, PluginSettingTab, Setting, setIcon } from "obsidian";
 import type TypeLogPlugin from "../main";
 import { CountMode, WindowMode } from "../core/settings";
 import { HardResetModal } from "./hardResetModal";
@@ -19,7 +19,7 @@ export class TypeLogSettingTab extends PluginSettingTab {
     const logo = head.createDiv({ cls: "typelog-settings-about-logo" });
     setIcon(logo, "bar-chart-2");
     const titles = head.createDiv({ cls: "typelog-settings-about-titles" });
-    titles.createEl("h2", { text: "TypeLog 字迹", cls: "typelog-settings-about-name" });
+    titles.createDiv({ text: "TypeLog 字迹", cls: "typelog-settings-about-name" });
     titles.createDiv({ cls: "typelog-settings-about-version" }).setText("v1.0.0 · 双轨统计制打字统计插件");
 
     about.createEl("p", {
@@ -53,7 +53,7 @@ export class TypeLogSettingTab extends PluginSettingTab {
     tip("统计数据存储在 vault 的 .typelog 目录与系统用户目录（全局数据）");
 
     // ---- 显示设置 ----
-    containerEl.createEl("h3", { text: "显示设置", cls: "typelog-settings-section" });
+    new Setting(containerEl).setName("显示设置").setHeading();
 
     new Setting(containerEl)
       .setName("状态栏显示统计")
@@ -92,7 +92,7 @@ export class TypeLogSettingTab extends PluginSettingTab {
     //   );
 
     // 统计设置
-    containerEl.createEl("h3", { text: "统计设置", cls: "typelog-settings-section" });
+    new Setting(containerEl).setName("统计设置").setHeading();
 
     // 计数
     new Setting(containerEl)
@@ -127,7 +127,6 @@ export class TypeLogSettingTab extends PluginSettingTab {
         sl
           .setLimits(1, 120, 1)
           .setValue(this.plugin.settings.idleThresholdSec)
-          .setDynamicTooltip()
           .onChange(async (v) => {
             this.plugin.settings.idleThresholdSec = v;
             this.plugin.engine.updateIdleThreshold(v * 1000);
@@ -140,8 +139,7 @@ export class TypeLogSettingTab extends PluginSettingTab {
       .setName("排除文件/文件夹")
       .setDesc("支持 .ignore 语法：* ? ** 通配符，! 反向排除，每行一条（如 node_modules、*.min.js）")
       .addTextArea((text) => {
-        text.inputEl.rows = 4;
-        text.inputEl.style.width = "100%";
+        text.inputEl.addClass("typelog-settings-exclude");
         text.setValue(this.plugin.settings.excludePatterns.join("\n"));
         text.onChange(async (v) => {
           this.plugin.settings.excludePatterns = v
@@ -218,14 +216,14 @@ export class TypeLogSettingTab extends PluginSettingTab {
       .setName("重置当前文件会话统计")
       .setDesc("仅重置本次打开会话的统计，不影响历史累计数据")
       .addButton((b) =>
-        b.setButtonText("重置会话").setWarning().onClick(() => this.plugin.resetSession()),
+        b.setButtonText("重置会话").setDestructive().onClick(() => this.plugin.resetSession()),
       );
 
     new Setting(containerEl)
       .setName("硬重置（清除所有历史）")
       .setDesc("删除全部文件层/工程层/全局层统计历史，此操作不可撤销")
       .addButton((b) =>
-        b.setButtonText("清除所有历史").setWarning().onClick(() => this.confirmHardReset()),
+        b.setButtonText("清除所有历史").setDestructive().onClick(() => this.confirmHardReset()),
       );
   }
 
