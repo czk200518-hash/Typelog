@@ -17,9 +17,9 @@ export class HardResetModal extends Modal {
     const cancelBtn = row.createEl("button", { text: "取消", cls: "mod-cta" });
     const okBtn = row.createEl("button", { text: "确认清除", cls: "mod-warning" });
     cancelBtn.addEventListener("click", () => this.close());
-    okBtn.addEventListener("click", async () => {
+    okBtn.addEventListener("click", () => {
       this.plugin.store.hardReset();
-      await this.plugin.store.flush();
+      void this.plugin.store.flush();
       new Notice("TypeLog：所有历史统计已清除");
       this.close();
     });
