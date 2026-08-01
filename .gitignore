@@ -1,0 +1,7 @@
+node_modules/
+main.js
+*.map
+.toolenv/
+.tmp_obsidian_*.txt
+test-vault/.obsidian/workspace.json
+test-vault/.obsidian/workspace-mobile.json
