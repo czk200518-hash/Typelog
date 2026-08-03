@@ -1,9 +1,9 @@
 {
   "id": "typelog",
   "name": "TypeLog",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minAppVersion": "1.2.0",
-  "description": "Track typing activity in Obsidian: net vs total input, active editing time, typing speed, calendar heatmap, and daily goals.",
+  "description": "Track typing activity: net vs total input, active editing time, typing speed, calendar heatmap, and daily goals.",
   "author": "8&6",
   "authorUrl": "",
   "isDesktopOnly": false
