@@ -26,7 +26,7 @@ export class TypeLogSettingTab extends PluginSettingTab {
     setIcon(logo, "bar-chart-2");
     const titles = head.createDiv({ cls: "typelog-settings-about-titles" });
     titles.createDiv({ text: "TypeLog 字迹", cls: "typelog-settings-about-name" });
-    titles.createDiv({ cls: "typelog-settings-about-version" }).setText("v1.0.5");
+    titles.createDiv({ cls: "typelog-settings-about-version" }).setText("v1.0.6");
 
     const tips = about.createDiv({ cls: "typelog-settings-tips" });
     tips.createDiv({ cls: "typelog-settings-tips-title" }).setText("tips");
