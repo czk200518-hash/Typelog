@@ -1,7 +1,7 @@
 {
   "name": "obsidian-typelog",
-  "version": "1.0.3",
-  "description": "双轨统计制打字统计插件：净产出与总劳动量、时间状态机、三层数据持久化、打字热力图",
+  "version": "1.0.4",
+  "description": "Typing statistics: net vs total input, active time, speed, heatmap, goals.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
@@ -21,6 +21,7 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "esbuild": "^0.21.0",
+    "happy-dom": "^20.11.1",
     "obsidian": "latest",
     "tslib": "^2.6.0",
     "typescript": "^5.4.0",
