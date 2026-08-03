@@ -40,6 +40,12 @@ export class StatsEngine {
   private tickTimer: number | null = null;
   private pomodoroStartedAt = 0;
   private pomodoroNotified = false;
+  // 番茄钟是否由用户手动启动（未启动时不计时）
+  private pomodoroRunning = false;
+  // 用户是否暂停（暂停期间不计时，已累计时长保留）
+  private pomodoroPaused = false;
+  // 已累计的计时时长（毫秒），暂停/继续时跨段累计
+  private pomodoroElapsedMs = 0;
   private fileOpenRef: EventRef | null = null;
   private lastMinute = -1;
 
@@ -108,6 +114,62 @@ export class StatsEngine {
     this.activeMachine.setIdleThresholdMs(ms);
   }
 
+  // ---- 番茄钟手动控制 ----
+  // 用户手动开始计时（返回是否成功启动）
+  startPomodoro(now = Date.now()): boolean {
+    if (!this.deps.getSettings().pomodoroEnabled) return false;
+    this.pomodoroRunning = true;
+    this.pomodoroPaused = false;
+    this.pomodoroElapsedMs = 0;
+    this.pomodoroStartedAt = now;
+    this.pomodoroNotified = false;
+    return true;
+  }
+
+  // 用户手动停止计时（完全复位）
+  stopPomodoro() {
+    this.pomodoroRunning = false;
+    this.pomodoroPaused = false;
+    this.pomodoroElapsedMs = 0;
+    this.pomodoroStartedAt = 0;
+    this.pomodoroNotified = false;
+  }
+
+  // 暂停：冻结计时，已累计时长保留（暂停期间即使闲置也不重置）
+  pausePomodoro() {
+    if (!this.pomodoroRunning || this.pomodoroPaused) return;
+    if (this.pomodoroStartedAt > 0) {
+      this.pomodoroElapsedMs += Date.now() - this.pomodoroStartedAt;
+    }
+    this.pomodoroStartedAt = 0;
+    this.pomodoroPaused = true;
+  }
+
+  // 继续：恢复计时（基准时间在下一次计时 tick 时重新起算）
+  resumePomodoro() {
+    if (!this.pomodoroRunning || !this.pomodoroPaused) return;
+    this.pomodoroPaused = false;
+    this.pomodoroStartedAt = 0;
+    this.pomodoroNotified = false;
+  }
+
+  isPomodoroRunning(): boolean {
+    return this.pomodoroRunning;
+  }
+
+  isPomodoroPaused(): boolean {
+    return this.pomodoroRunning && this.pomodoroPaused;
+  }
+
+  // 剩余毫秒（未启动返回 0；已启动但尚未进入计时阶段返回未计满部分）
+  getPomodoroRemainingMs(now = Date.now()): number {
+    if (!this.pomodoroRunning) return 0;
+    const s = this.deps.getSettings();
+    const total = s.pomodoroMinutes * 60_000;
+    const elapsed = this.pomodoroElapsedMs + (this.pomodoroStartedAt > 0 ? now - this.pomodoroStartedAt : 0);
+    return Math.max(0, total - elapsed);
+  }
+
   // ---- 事件处理 ----
   private handleFileOpen = (file: TFile | null) => {
     if (!file) {
@@ -130,8 +192,6 @@ export class StatsEngine {
     void this.deps.vault.cachedRead(file).then((text) => {
       this.deps.session.setNetStartWords(text, mode);
     });
-    this.pomodoroStartedAt = now;
-    this.pomodoroNotified = false;
     this.deps.onUiUpdate();
   };
 
@@ -168,22 +228,35 @@ export class StatsEngine {
         this.deps.session.pushMinuteSample(now);
       }
     }
-    // 番茄钟（连续活跃）
-    if (res.active && this.currentPath) {
+    // 番茄钟（用户手动启动后计时；real=纯计时，active=仅连续活跃时计时）
+    if (this.pomodoroRunning) {
       const s = this.deps.getSettings();
-      if (s.pomodoroEnabled && !this.pomodoroNotified) {
-        const since = now - (this.pomodoroStartedAt || now);
-        if (since >= s.pomodoroMinutes * 60_000) {
-          this.pomodoroNotified = true;
-          this.deps.onPomodoroDue();
+      if (s.pomodoroEnabled) {
+        // 暂停期间不计时，也不受闲置中断影响
+        if (!this.pomodoroPaused) {
+          const isReal = s.pomodoroMode === "real";
+          // 纯计时不依赖活跃状态；活跃计时需前台文件且当前处于活跃
+          const counting = isReal || (res.active && this.currentPath);
+          if (counting) {
+            // 基准时间缺失（初次计时，继续后，或曾被闲置中断重置）时重新起算
+            if (this.pomodoroStartedAt === 0) {
+              this.pomodoroStartedAt = now;
+            }
+            const elapsed = this.pomodoroElapsedMs + (now - this.pomodoroStartedAt);
+            if (!this.pomodoroNotified && elapsed >= s.pomodoroMinutes * 60_000) {
+              this.pomodoroNotified = true;
+              this.deps.onPomodoroDue();
+            }
+          } else if (!res.active) {
+            // 活跃模式下中断则重新累计
+            this.pomodoroNotified = false;
+            this.pomodoroElapsedMs = 0;
+            this.pomodoroStartedAt = 0;
+          }
         }
       }
-    } else if (!res.active) {
-      // 中断则重新累计
-      this.pomodoroNotified = false;
-      this.pomodoroStartedAt = 0;
     }
-    if (res.activeMs > 0 || this.currentPath) {
+    if (res.activeMs > 0 || this.currentPath || this.pomodoroRunning) {
       this.deps.onUiUpdate();
     }
   };
