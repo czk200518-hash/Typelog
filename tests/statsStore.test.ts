@@ -12,7 +12,7 @@ class MemAdapter implements StatsStorageAdapter {
   }
 }
 
-const PATHS = { fileStats: "f.json", project: "p.json", global: "g.json" };
+const PATHS = { fileStats: "f.json", project: "p.json", globalStats: "g.json" };
 
 describe("StatsStore 三层存储", () => {
   let adapter: MemAdapter;
