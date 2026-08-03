@@ -1,9 +1,9 @@
 {
   "id": "typelog",
   "name": "TypeLog",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "minAppVersion": "1.2.0",
-  "description": "Track typing activity: net vs total input, active editing time, typing speed, calendar heatmap, and daily goals.",
+  "description": "Typing statistics: net vs total input, active time, speed, heatmap, goals.",
   "author": "8&6",
   "authorUrl": "",
   "isDesktopOnly": false
