@@ -117,7 +117,7 @@ export class DashboardView extends ItemView {
     el.empty();
     el.toggleClass("typelog-compact", this.isCompact);
 
-    const global = this.plugin.store.getGlobalStats();
+    const globalStats = this.plugin.store.getGlobalStats();
     const session = this.plugin.session.get();
     const engine = this.plugin.engine;
     const todayKey = dateKey(new Date());
@@ -132,9 +132,9 @@ export class DashboardView extends ItemView {
     // ---- 悬浮窗精简模式：仅今日三数据 ----
     if (this.isCompact) {
       const compactRow = el.createDiv({ cls: "typelog-overview-row typelog-compact-row" });
-      statItem(compactRow, "今日编辑时长", formatDuration(global.dailyActiveByDate[todayKey] ?? 0));
-      statItem(compactRow, "今日累计输入", formatNumber(global.dailyGrossByDate[todayKey] ?? 0));
-      statItem(compactRow, "今日峰值", `${formatNumber(global.dailyPeakByDate[todayKey] ?? 0)} 字/分`);
+      statItem(compactRow, "今日编辑时长", formatDuration(globalStats.dailyActiveByDate[todayKey] ?? 0));
+      statItem(compactRow, "今日累计输入", formatNumber(globalStats.dailyGrossByDate[todayKey] ?? 0));
+      statItem(compactRow, "今日峰值", `${formatNumber(globalStats.dailyPeakByDate[todayKey] ?? 0)} 字/分`);
       return;
     }
 
@@ -143,15 +143,15 @@ export class DashboardView extends ItemView {
     overview.createEl("h3", { text: "今日总览", cls: "typelog-section-title" });
 
     const statsRow = overview.createDiv({ cls: "typelog-overview-row" });
-    statItem(statsRow, "今日编辑时长", formatDuration(global.dailyActiveByDate[todayKey] ?? 0));
-    statItem(statsRow, "今日累计输入", formatNumber(global.dailyGrossByDate[todayKey] ?? 0));
-    statItem(statsRow, "今日峰值", `${formatNumber(global.dailyPeakByDate[todayKey] ?? 0)} 字/分`);
+    statItem(statsRow, "今日编辑时长", formatDuration(globalStats.dailyActiveByDate[todayKey] ?? 0));
+    statItem(statsRow, "今日累计输入", formatNumber(globalStats.dailyGrossByDate[todayKey] ?? 0));
+    statItem(statsRow, "今日峰值", `${formatNumber(globalStats.dailyPeakByDate[todayKey] ?? 0)} 字/分`);
 
     // 每日目标进度环（精简模式隐藏）
     if (!this.isCompact) {
       const goals = overview.createDiv({ cls: "typelog-goals" });
-      const todayWords = global.dailyGrossByDate[todayKey] ?? 0;
-      const todayMs = global.dailyActiveByDate[todayKey] ?? 0;
+      const todayWords = globalStats.dailyGrossByDate[todayKey] ?? 0;
+      const todayMs = globalStats.dailyActiveByDate[todayKey] ?? 0;
       const wordRatio = settings.dailyWordGoal > 0 ? todayWords / settings.dailyWordGoal : 0;
       const timeRatio = settings.dailyTimeGoalMin > 0 ? todayMs / (settings.dailyTimeGoalMin * 60_000) : 0;
       const goalItem = (ratio: number, ringLabel: string, text: string) => {
@@ -215,7 +215,7 @@ export class DashboardView extends ItemView {
           const isCurrent = d.getMonth() === month;
           let minutes = 0;
           if (isCurrent) {
-            const hours = global.heatmap[dateKey(d)];
+            const hours = globalStats.heatmap[dateKey(d)];
             if (hours) minutes = Math.round(hours.reduce((a, b) => a + (b || 0), 0) / 60_000);
           }
           col.push({ minutes, isCurrent });
