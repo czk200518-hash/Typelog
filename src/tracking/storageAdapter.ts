@@ -41,6 +41,11 @@ export function getNodeRequire(): NodeRequire | null {
   return null;
 }
 
+// 系统绝对路径（盘符:/、/ 开头、\\ 开头）
+export function isSystemPath(p: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(p) || p.startsWith("/") || p.startsWith("\\\\");
+}
+
 export class AdaptiveStorageAdapter implements StatsStorageAdapter {
   private nodeRequire: NodeRequire | null;
 
@@ -48,13 +53,8 @@ export class AdaptiveStorageAdapter implements StatsStorageAdapter {
     this.nodeRequire = getNodeRequire();
   }
 
-  // 系统绝对路径（盘符:/、/ 开头、\\ 开头）
-  private isSystemPath(p: string): boolean {
-    return /^[A-Za-z]:[\\/]/.test(p) || p.startsWith("/") || p.startsWith("\\\\");
-  }
-
   async read(path: string): Promise<string | null> {
-    if (this.isSystemPath(path)) {
+    if (isSystemPath(path)) {
       const fs = this.nodeRequire?.("fs");
       if (fs) {
         try {
@@ -73,7 +73,7 @@ export class AdaptiveStorageAdapter implements StatsStorageAdapter {
   }
 
   async write(path: string, content: string): Promise<void> {
-    if (this.isSystemPath(path)) {
+    if (isSystemPath(path)) {
       const fs = this.nodeRequire?.("fs");
       if (fs) {
         const dir = path.slice(0, Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")));
