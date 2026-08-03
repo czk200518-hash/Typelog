@@ -2,6 +2,22 @@
    TypeLog 打字统计插件样式
    ============================================ */
 
+/* ---- 设置页：允许描述内换行（\n 生效） ---- */
+.typelog-desc-preline .setting-item-description {
+  white-space: pre-line;
+}
+
+/* 闲置判定时间数值框：与滑块并排的窄数值框（可容纳 3 位数字，范围 1-120） */
+.typelog-idle-threshold {
+  width: 5ch;
+  text-align: center;
+}
+
+/* 隐藏 Obsidian 滑块内嵌的只读数值（1.13+ 显示在滑块旁），改用右侧可编辑输入框 */
+.typelog-idle-threshold-setting .slider-value {
+  display: none;
+}
+
 /* ---- 状态栏 ---- */
 .typelog-statusbar {
   display: inline-flex;
@@ -24,6 +40,189 @@
 
 .typelog-sb-today {
   color: var(--text-muted);
+}
+
+/* 番茄钟状态栏入口 */
+.typelog-sb-pomodoro {
+  color: var(--text-faint);
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+.typelog-sb-pomodoro-idle {
+  color: var(--text-muted);
+}
+
+.typelog-sb-pomodoro-idle:hover {
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.typelog-sb-pomodoro-running {
+  color: var(--color-red);
+  background: color-mix(in srgb, var(--color-red) 12%, transparent);
+}
+
+.typelog-sb-pomodoro-paused {
+  color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+/* ---- 番茄钟控制（统计窗口内嵌卡片） ---- */
+.typelog-pomodoro-card {
+  width: 66.67%;
+  margin-left: auto;
+  margin-right: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: var(--background-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+}
+
+.typelog-pomodoro-state {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-normal);
+}
+
+.typelog-pomodoro-state.running {
+  color: var(--color-red);
+}
+
+.typelog-pomodoro-state.paused {
+  color: var(--interactive-accent);
+}
+
+.typelog-pomodoro-state.idle {
+  color: var(--text-muted);
+}
+
+.typelog-pomodoro-mode {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 未开始时：分钟/秒分开输入，中间固定“:” */
+.typelog-pomodoro-time-edit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.typelog-pomodoro-time-input {
+  width: 2.4ch;
+  font-size: 25px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0;
+  color: var(--text-normal);
+  box-shadow: none;
+}
+
+.typelog-pomodoro-time-mm {
+  width: 3ch;
+}
+
+.typelog-pomodoro-time-input:hover {
+  border-bottom-color: var(--background-modifier-border);
+}
+
+.typelog-pomodoro-time-input:focus {
+  border-bottom-color: var(--interactive-accent);
+  box-shadow: none;
+}
+
+.typelog-pomodoro-time-sep {
+  font-size: 25px;
+  font-weight: 800;
+  color: var(--text-normal);
+  line-height: 1;
+}
+
+.typelog-pomodoro-time {
+  font-size: 25px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--text-normal);
+}
+
+.typelog-pomodoro-bar {
+  height: 4px;
+  border-radius: 3px;
+  background: var(--background-modifier-border);
+  overflow: hidden;
+}
+
+.typelog-pomodoro-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--interactive-accent);
+  transition: width 0.3s ease;
+}
+
+.typelog-pomodoro-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.typelog-pomodoro-actions button {
+  flex: 1;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.typelog-pomodoro-disabled {
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 24px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.typelog-pomodoro-disabled-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-normal);
+}
+
+.typelog-pomodoro-disabled-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 番茄钟完成提醒：屏幕中央弹窗 */
+.typelog-notice-center {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  max-width: 80vw;
+  padding: 20px 32px;
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+  text-align: center;
+  border-radius: 12px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: var(--shadow-l);
+  animation: none;
 }
 
 /* ============================================
@@ -381,13 +580,6 @@
   line-height: 1.4;
 }
 
-.typelog-settings-tips {
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--background-primary);
-  border: 1px dashed var(--background-modifier-border);
-}
-
 .typelog-settings-tips-title {
   font-size: 11px;
   font-weight: 600;
@@ -434,7 +626,7 @@
   overflow-x: auto;
   height: 100%;
 
-  zoom: 1.2;
+  zoom: 1.1;
 }
 
 .typelog-section {
