@@ -1,6 +1,6 @@
 {
   "name": "obsidian-typelog",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "双轨统计制打字统计插件：净产出与总劳动量、时间状态机、三层数据持久化、打字热力图",
   "main": "main.js",
   "scripts": {
@@ -20,7 +20,6 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "builtin-modules": "^3.3.0",
     "esbuild": "^0.21.0",
     "obsidian": "latest",
     "tslib": "^2.6.0",
