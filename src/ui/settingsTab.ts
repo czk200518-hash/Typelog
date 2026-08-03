@@ -215,16 +215,20 @@ export class TypeLogSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("重置当前文件会话统计")
       .setDesc("仅重置本次打开会话的统计，不影响历史累计数据")
-      .addButton((b) =>
-        b.setButtonText("重置会话").setDestructive().onClick(() => this.plugin.resetSession()),
-      );
+      .addButton((b) => {
+        b.setButtonText("重置会话");
+        b.buttonEl.addClass("typelog-btn-danger");
+        b.onClick(() => this.plugin.resetSession());
+      });
 
     new Setting(containerEl)
       .setName("硬重置（清除所有历史）")
       .setDesc("删除全部文件层/工程层/全局层统计历史，此操作不可撤销")
-      .addButton((b) =>
-        b.setButtonText("清除所有历史").setDestructive().onClick(() => this.confirmHardReset()),
-      );
+      .addButton((b) => {
+        b.setButtonText("清除所有历史");
+        b.buttonEl.addClass("typelog-btn-danger");
+        b.onClick(() => this.confirmHardReset());
+      });
   }
 
   private confirmHardReset() {
