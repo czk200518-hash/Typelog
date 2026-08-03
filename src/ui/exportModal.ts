@@ -1,6 +1,5 @@
 // 导出统计报表弹窗：可选择导出格式、导出目录（资源管理器选择或 vault 内文件夹补全）与文件名
-import { App, FileSystemAdapter, Modal, Notice, Setting, TFolder } from "obsidian";
-import { AbstractInputSuggest } from "obsidian";
+import { AbstractInputSuggest, App, FileSystemAdapter, Modal, Notice, Setting, TFolder } from "obsidian";
 import type TypeLogPlugin from "../main";
 import { defaultExportName } from "../core/format";
 import { getNodeRequire } from "../tracking/storageAdapter";
