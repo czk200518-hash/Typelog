@@ -25,7 +25,7 @@ export class TypeLogSettingTab extends PluginSettingTab {
     setIcon(logo, "bar-chart-2");
     const titles = head.createDiv({ cls: "typelog-settings-about-titles" });
     titles.createDiv({ text: "TypeLog 字迹", cls: "typelog-settings-about-name" });
-    titles.createDiv({ cls: "typelog-settings-about-version" }).setText("v1.0.0 · 双轨统计制打字统计插件");
+    titles.createDiv({ cls: "typelog-settings-about-version" }).setText("v1.0.3 · 双轨统计制打字统计插件");
 
     about.createEl("p", {
       text: "精准记录你的每一次敲击。区分「净产出」与「总劳动量」，自动识别编辑态与挂机态，所有数据仅存本地。",
