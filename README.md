@@ -1,6 +1,6 @@
 # TypeLog
 
-> [中文介绍](https://github.com/czk200518-hash/Typelog)
+> [中文介绍](README_zh.md)
 
 An Obsidian plugin for typing statistics. It tracks **net output** (words remaining in the file) and **total input** (every keystroke, including deletions and rewrites) separately. All data is stored locally.
 
