@@ -2,7 +2,7 @@
   "id": "typelog",
   "name": "TypeLog",
   "version": "1.0.4",
-  "minAppVersion": "1.2.0",
+  "minAppVersion": "1.6.6",
   "description": "Typing statistics: net vs total input, active time, speed, heatmap, goals.",
   "author": "8&6",
   "authorUrl": "",
