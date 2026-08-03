@@ -607,11 +607,11 @@
 }
 
 /* ---- 危险操作按钮 ---- */
-.typelog-btn-danger {
-  color: var(--text-error) !important;
-  border-color: var(--text-error) !important;
+.setting-item button.typelog-btn-danger {
+  color: var(--text-error);
+  border-color: var(--text-error);
 }
 
-.typelog-btn-danger:hover {
-  background: rgba(var(--color-red-rgb), 0.15) !important;
+.setting-item button.typelog-btn-danger:hover {
+  background: rgba(var(--color-red-rgb), 0.15);
 }
