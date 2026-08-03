@@ -11,7 +11,7 @@ export interface StatsStorageAdapter {
 export interface StatsStorePaths {
   fileStats: string;
   project: string;
-  global: string;
+  globalStats: string;
 }
 
 function emptyGlobal(): GlobalStats {
@@ -27,7 +27,7 @@ function emptyGlobal(): GlobalStats {
 
 export class StatsStore {
   private files: Record<string, FileStats> = {};
-  private global: GlobalStats = emptyGlobal();
+  private globalStats: GlobalStats = emptyGlobal();
   private project: ProjectStatsData = { version: 1, grossTyped: 0, deletedChars: 0, activeTimeMs: 0, updatedAt: 0 };
   private dirty = false;
   private flushTimer: number | null = null;
@@ -56,10 +56,10 @@ export class StatsStore {
       this.project = { version: 1, grossTyped: 0, deletedChars: 0, activeTimeMs: 0, updatedAt: 0 };
     }
     try {
-      const raw = await this.storage.read(this.paths.global);
-      if (raw) this.global = { ...emptyGlobal(), ...(JSON.parse(raw) as Partial<GlobalStats>) };
+      const raw = await this.storage.read(this.paths.globalStats);
+      if (raw) this.globalStats = { ...emptyGlobal(), ...(JSON.parse(raw) as Partial<GlobalStats>) };
     } catch {
-      this.global = emptyGlobal();
+      this.globalStats = emptyGlobal();
     }
   }
 
@@ -71,9 +71,9 @@ export class StatsStore {
     const file = this.ensureFile(path, now.getTime());
     file.grossTyped += typed;
     file.deletedChars += deleted;
-    this.global.grossTypedTotal += typed;
-    this.global.deletedCharsTotal += deleted;
-    this.global.dailyGrossByDate[key] = (this.global.dailyGrossByDate[key] || 0) + typed;
+    this.globalStats.grossTypedTotal += typed;
+    this.globalStats.deletedCharsTotal += deleted;
+    this.globalStats.dailyGrossByDate[key] = (this.globalStats.dailyGrossByDate[key] || 0) + typed;
     this.project.grossTyped += typed;
     this.project.deletedChars += deleted;
     this.project.updatedAt = now.getTime();
@@ -86,9 +86,9 @@ export class StatsStore {
     const key = dateKey(now);
     const file = this.ensureFile(path, now.getTime());
     file.activeTimeMs += ms;
-    this.global.dailyActiveByDate[key] = (this.global.dailyActiveByDate[key] || 0) + ms;
-    if (!this.global.heatmap[key]) this.global.heatmap[key] = new Array<number>(24).fill(0);
-    this.global.heatmap[key][hour] = (this.global.heatmap[key][hour] || 0) + ms;
+    this.globalStats.dailyActiveByDate[key] = (this.globalStats.dailyActiveByDate[key] || 0) + ms;
+    if (!this.globalStats.heatmap[key]) this.globalStats.heatmap[key] = new Array<number>(24).fill(0);
+    this.globalStats.heatmap[key][hour] = (this.globalStats.heatmap[key][hour] || 0) + ms;
     this.project.activeTimeMs += ms;
     this.project.updatedAt = now.getTime();
     this.markDirty();
@@ -97,9 +97,9 @@ export class StatsStore {
   // 记录每日峰值速度（取当日最大值）
   recordPeak(cpm: number) {
     const key = dateKey(new Date());
-    const cur = this.global.dailyPeakByDate[key] || 0;
+    const cur = this.globalStats.dailyPeakByDate[key] || 0;
     if (cpm > cur) {
-      this.global.dailyPeakByDate[key] = cpm;
+      this.globalStats.dailyPeakByDate[key] = cpm;
       this.markDirty();
     }
   }
@@ -129,7 +129,7 @@ export class StatsStore {
   }
 
   getGlobalStats(): GlobalStats {
-    return this.global;
+    return this.globalStats;
   }
 
   getProjectStats(): ProjectStatsData {
@@ -155,7 +155,7 @@ export class StatsStore {
       const fileData: FileStatsStoreData = { version: 1, files: this.files };
       await this.storage.write(this.paths.fileStats, JSON.stringify(fileData));
       await this.storage.write(this.paths.project, JSON.stringify(this.project));
-      await this.storage.write(this.paths.global, JSON.stringify(this.global));
+      await this.storage.write(this.paths.globalStats, JSON.stringify(this.globalStats));
     } catch (err) {
       this.dirty = true; // 写盘失败回置，下次重试
       console.error("[TypeLog] 数据写盘失败：", err);
@@ -167,7 +167,7 @@ export class StatsStore {
   // 硬重置：清空全部历史（UI 需二次确认）
   hardReset() {
     this.files = {};
-    this.global = emptyGlobal();
+    this.globalStats = emptyGlobal();
     this.project = { version: 1, grossTyped: 0, deletedChars: 0, activeTimeMs: 0, updatedAt: 0 };
     this.markDirty();
   }
