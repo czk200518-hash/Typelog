@@ -1,15 +1,16 @@
 // TypeLog 设置页
-import { App, PluginSettingTab, Setting, setIcon, type SettingDefinitionItem } from "obsidian";
+import { App, PluginSettingTab, Setting, setIcon, type SettingDefinitionItem, type SliderComponent, type TextComponent } from "obsidian";
 import type TypeLogPlugin from "../main";
-import { CountMode, WindowMode } from "../core/settings";
-import { HardResetModal } from "./hardResetModal";
+import { CountMode, PomodoroMode, WindowMode } from "../core/settings";
+import { formatMinutesSeconds, parseMinutesSeconds } from "../core/format";
+import { ExportStatsModal } from "./exportModal";
 
 export class TypeLogSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: TypeLogPlugin) {
     super(app, plugin);
   }
 
-  // 本页使用自定义渲染（display），此处保持空实现以兼容 1.13.0+ 的设置搜索索引。
+  // 使用自定义渲染display，此处保持空实现以兼容1.13.0+的设置搜索索引
   getSettingDefinitions(): SettingDefinitionItem[] {
     return [];
   }
@@ -25,12 +26,7 @@ export class TypeLogSettingTab extends PluginSettingTab {
     setIcon(logo, "bar-chart-2");
     const titles = head.createDiv({ cls: "typelog-settings-about-titles" });
     titles.createDiv({ text: "TypeLog 字迹", cls: "typelog-settings-about-name" });
-    titles.createDiv({ cls: "typelog-settings-about-version" }).setText("v1.0.3 · 双轨统计制打字统计插件");
-
-    about.createEl("p", {
-      text: "精准记录你的每一次敲击。区分「净产出」与「总劳动量」，自动识别编辑态与挂机态，所有数据仅存本地。",
-      cls: "typelog-settings-about-desc",
-    });
+    titles.createDiv({ cls: "typelog-settings-about-version" }).setText("v1.0.3");
 
     const features = about.createDiv({ cls: "typelog-settings-features" });
     const feature = (icon: string, title: string, desc: string) => {
@@ -41,21 +37,17 @@ export class TypeLogSettingTab extends PluginSettingTab {
       t.createDiv({ cls: "typelog-settings-feature-title" }).setText(title);
       t.createDiv({ cls: "typelog-settings-feature-desc" }).setText(desc);
     };
-    feature("git-compare", "双轨统计", "净字数衡量产出，累计字数记录键盘真实劳动量（含删除/替换）");
-    feature("activity", "时间状态", "5 秒无操作自动暂停计时，精准统计活跃编辑时长与闲置时间");
-    feature("chart-line", "速度与热力图", "60 秒滑动窗口实时速度、峰值速度、分钟级增长曲线与 24 小时打字热力图");
-    feature("database", "三层本地存储", "文件层 / 工程层 / 全局层三级，支持 JSON / CSV 导出，数据仅保存在本地");
 
     const tips = about.createDiv({ cls: "typelog-settings-tips" });
-    tips.createDiv({ cls: "typelog-settings-tips-title" }).setText("快速上手");
+    tips.createDiv({ cls: "typelog-settings-tips-title" }).setText("tips");
     const tip = (t: string) => {
       const row = tips.createDiv({ cls: "typelog-settings-tip" });
-      setIcon(row.createSpan(), "arrow-right");
+//      setIcon(row.createSpan(), "arrow-right");
       row.createSpan().setText(t);
     };
     tip("点击左侧功能区图表图标，或命令面板执行「TypeLog: 打开统计窗口」");
-    tip("点击状态栏任意数值，查看当前文件详细统计卡片");
-    tip("统计数据存储在 vault 的 .typelog 目录与系统用户目录（全局数据）");
+    tip("点击状态栏任信息，查看当前文件详细统计情况");
+    tip("统计数据存储在 vault 的 .typelog 目录与系统用户目录");
 
     // ---- 显示设置 ----
     new Setting(containerEl).setName("显示设置").setHeading();
@@ -71,21 +63,21 @@ export class TypeLogSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl)
-      .setName("统计窗口模式")
-      .setDesc("选择功能区图标与「打开统计窗口」命令打开的窗口类型")
-      .addDropdown((dd) =>
-        dd
-          .addOption("none", "不显示窗口（仅状态栏）")
-          .addOption("sidebar", "侧边栏面板")
-          .setValue(this.plugin.settings.windowMode === "floating" ? "sidebar" : this.plugin.settings.windowMode)
-          .onChange(async (v) => {
-            this.plugin.settings.windowMode = v as WindowMode;
-            await this.plugin.saveSettings();
-          }),
-      );
+//    new Setting(containerEl)
+//      .setName("统计窗口模式")
+//      .setDesc("选择功能区图标与「打开统计窗口」命令打开的窗口类型")
+//      .addDropdown((dd) =>
+//        dd
+//          .addOption("none", "不显示窗口（仅状态栏）")
+//          .addOption("sidebar", "侧边栏面板")
+//          .setValue(this.plugin.settings.windowMode === "floating" ? "sidebar" : this.plugin.settings.windowMode)
+//          .onChange(async (v) => {
+//            this.plugin.settings.windowMode = v as WindowMode;
+//            await this.plugin.saveSettings();
+//          }),
+//      );
 
-    // 悬浮窗暂时隐藏（开发中）
+    // 悬浮窗
     // new Setting(containerEl)
     //   .setName("悬浮窗保持最前")
     //   .setDesc("开启后悬浮窗失焦时自动拉回最前（仅悬浮窗模式生效）；如干扰其他操作可关闭")
@@ -125,10 +117,14 @@ export class TypeLogSettingTab extends PluginSettingTab {
       );
 
     // ---- 时间 ----
+    let idleSlider: SliderComponent | undefined;
+    let idleText: TextComponent | undefined;
     new Setting(containerEl)
       .setName("闲置判定时间（秒）")
-      .setDesc("连续无编辑操作超过该时间，停止活跃计时（默认 5 秒）")
-      .addSlider((sl) =>
+      .setDesc("连续无编辑操作超过该时间，停止活跃计时，范围 1-120秒")
+      .setClass("typelog-idle-threshold-setting")
+      .addSlider((sl) => {
+        idleSlider = sl;
         sl
           .setLimits(1, 120, 1)
           .setValue(this.plugin.settings.idleThresholdSec)
@@ -136,8 +132,26 @@ export class TypeLogSettingTab extends PluginSettingTab {
             this.plugin.settings.idleThresholdSec = v;
             this.plugin.engine.updateIdleThreshold(v * 1000);
             await this.plugin.saveSettings();
-          }),
-      );
+            idleText?.setValue(String(v));
+          });
+      })
+      .addText((text) => {
+        idleText = text;
+        text.inputEl.inputMode = "numeric";
+        text.inputEl.addClass("typelog-idle-threshold");
+        text
+          .setValue(String(this.plugin.settings.idleThresholdSec))
+          .setPlaceholder("秒")
+          .onChange(async (v) => {
+            const n = parseInt(v, 10);
+            if (!isNaN(n) && n >= 1 && n <= 120) {
+              this.plugin.settings.idleThresholdSec = n;
+              this.plugin.engine.updateIdleThreshold(n * 1000);
+              await this.plugin.saveSettings();
+              idleSlider?.setValue(n);
+            }
+          });
+      });
 
     // ---- 排除规则 ----
     new Setting(containerEl)
@@ -185,58 +199,90 @@ export class TypeLogSettingTab extends PluginSettingTab {
     // ---- 番茄钟 ----
     new Setting(containerEl)
       .setName("番茄钟提醒")
-      .setDesc("连续活跃编辑达到设定时长后，状态栏弹窗提醒休息")
+      .setDesc("手动启动，连续活跃编辑达到设定时长即发出提醒\n状态栏点击或命令“开始/停止番茄钟”触发")
+      .setClass("typelog-desc-preline")
       .addToggle((tg) =>
         tg.setValue(this.plugin.settings.pomodoroEnabled).onChange(async (v) => {
           this.plugin.settings.pomodoroEnabled = v;
+          if (!v) this.plugin.engine.stopPomodoro();
           await this.plugin.saveSettings();
         }),
       );
 
     new Setting(containerEl)
-      .setName("番茄钟时长（分钟）")
-      .setDesc("默认 25 分钟")
+      .setName("番茄钟时长")
+      .setDesc("默认25分钟；输入格式：xx分xx秒，或直接输入分钟数；修改时长会重置当前番茄钟")
       .addText((text) =>
-        text.setValue(String(this.plugin.settings.pomodoroMinutes)).onChange(async (v) => {
-          const n = parseInt(v, 10);
-          if (!isNaN(n) && n > 0) {
+        text.setValue(formatMinutesSeconds(this.plugin.settings.pomodoroMinutes)).onChange(async (v) => {
+          const n = parseMinutesSeconds(v);
+          if (n !== null && n > 0) {
             this.plugin.settings.pomodoroMinutes = n;
             await this.plugin.saveSettings();
           }
         }),
       );
 
+    new Setting(containerEl)
+      .setName("番茄钟计时方式")
+      .setDesc("纯计时：启动后按真实时间计时，不依赖是否打字；\n活跃计时：仅在连续编辑活跃时计时，中途停顿超过闲置阈值则重新累计。")
+      .setClass("typelog-desc-preline")
+      .addDropdown((dd) =>
+        dd
+          .addOption("real", "纯计时")
+          .addOption("active", "活跃计时")
+          .setValue(this.plugin.settings.pomodoroMode)
+          .onChange(async (v) => {
+            this.plugin.settings.pomodoroMode = v as PomodoroMode;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("番茄钟控制")
+      .setDesc("由你决定何时开始计时")
+      .addButton((b) => {
+        const updateText = () => {
+          const e = this.plugin.engine;
+          if (e.isPomodoroPaused()) {
+            b.setButtonText("继续番茄钟");
+          } else if (e.isPomodoroRunning()) {
+            b.setButtonText("停止番茄钟");
+          } else {
+            b.setButtonText("开始番茄钟");
+          }
+        };
+        updateText();
+        b.onClick(() => {
+          this.plugin.togglePomodoro();
+          // 刷新按钮文案
+          updateText();
+        });
+      });
+
     // ---- 数据管理 ----
     new Setting(containerEl)
       .setName("导出统计报表")
-      .setDesc("导出 JSON 或 CSV 格式的统计数据文件到当前 vault")
+      .setDesc("可自定义导出格式、vault 内导出目录与文件名")
       .addButton((b) =>
-        b.setButtonText("导出 JSON").onClick(() => this.plugin.exportStats("json")),
-      )
-      .addButton((b) =>
-        b.setButtonText("导出 CSV").onClick(() => this.plugin.exportStats("csv")),
+        b.setButtonText("导出报表").setCta().onClick(() => new ExportStatsModal(this.app, this.plugin).open()),
       );
 
     new Setting(containerEl)
       .setName("重置当前文件会话统计")
-      .setDesc("仅重置本次打开会话的统计，不影响历史累计数据")
+      .setDesc("仅重置本次打开会话的统计，不影响历史累计数据（需两步确认）")
       .addButton((b) => {
         b.setButtonText("重置会话");
         b.buttonEl.addClass("typelog-btn-danger");
-        b.onClick(() => this.plugin.resetSession());
+        b.onClick(() => this.plugin.confirmResetSession());
       });
 
     new Setting(containerEl)
       .setName("硬重置（清除所有历史）")
-      .setDesc("删除全部文件层/工程层/全局层统计历史，此操作不可撤销")
+      .setDesc("删除全部文件层/工程层/全局层统计历史，此操作不可撤销（需两步确认）")
       .addButton((b) => {
         b.setButtonText("清除所有历史");
         b.buttonEl.addClass("typelog-btn-danger");
-        b.onClick(() => this.confirmHardReset());
+        b.onClick(() => this.plugin.confirmHardReset());
       });
-  }
-
-  private confirmHardReset() {
-    new HardResetModal(this.app, this.plugin).open();
   }
 }
