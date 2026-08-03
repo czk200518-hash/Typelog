@@ -1,7 +1,7 @@
 // TypeLog 设置页
 import { App, PluginSettingTab, Setting, setIcon, type SettingDefinitionItem, type SliderComponent, type TextComponent } from "obsidian";
 import type TypeLogPlugin from "../main";
-import { CountMode, PomodoroMode, WindowMode } from "../core/settings";
+import { CountMode, PomodoroMode } from "../core/settings";
 import { formatMinutesSeconds, parseMinutesSeconds } from "../core/format";
 import { ExportStatsModal } from "./exportModal";
 
@@ -26,17 +26,7 @@ export class TypeLogSettingTab extends PluginSettingTab {
     setIcon(logo, "bar-chart-2");
     const titles = head.createDiv({ cls: "typelog-settings-about-titles" });
     titles.createDiv({ text: "TypeLog 字迹", cls: "typelog-settings-about-name" });
-    titles.createDiv({ cls: "typelog-settings-about-version" }).setText("v1.0.3");
-
-    const features = about.createDiv({ cls: "typelog-settings-features" });
-    const feature = (icon: string, title: string, desc: string) => {
-      const f = features.createDiv({ cls: "typelog-settings-feature" });
-      const ic = f.createDiv({ cls: "typelog-settings-feature-icon" });
-      setIcon(ic, icon);
-      const t = f.createDiv({ cls: "typelog-settings-feature-text" });
-      t.createDiv({ cls: "typelog-settings-feature-title" }).setText(title);
-      t.createDiv({ cls: "typelog-settings-feature-desc" }).setText(desc);
-    };
+    titles.createDiv({ cls: "typelog-settings-about-version" }).setText("v1.0.4");
 
     const tips = about.createDiv({ cls: "typelog-settings-tips" });
     tips.createDiv({ cls: "typelog-settings-tips-title" }).setText("tips");
