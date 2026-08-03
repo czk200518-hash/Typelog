@@ -34,7 +34,7 @@ export function renderLineChart(container: HTMLElement, points: ChartPoint[], op
   const padB = 20;
   const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, xmlns: SVG_NS });
 
-  if (points.length < 2) {
+  if (points.length === 0) {
     svg.appendChild(svgEl("text", { x: String(width / 2), y: String(height / 2), "text-anchor": "middle", fill: "var(--text-muted)", "font-size": "11" }, "暂无数据"));
     container.appendChild(svg);
     return;
@@ -123,25 +123,22 @@ export interface HeatmapDay {
 export interface HeatmapOptions {
   // 每列（周）7 个单元，行序：周一 ~ 周日
   cols: HeatmapDay[][];
-  // 月份标签，如 "2026年8月"
-  monthLabel: string;
   cellSize?: number;
   gap?: number;
 }
 
-// GitHub 贡献图风格热力图：列=周，行=星期，颜色深浅=活跃分钟数
+// GitHub 贡献图风格热力图：列=星期（周一~周日），行=周，颜色深浅=活跃分钟数
 export function renderHeatmap(container: HTMLElement, opts: HeatmapOptions): void {
   const cell = opts.cellSize ?? 10;
   const gap = opts.gap ?? 2;
-  const rows = 7;
-  const cols = opts.cols.length;
-  const padL = 26; // 左侧星期标签
-  const padT = 16; // 顶部月份
+  const rows = opts.cols.length; // 行数 = 周数
+  const cols = 7; // 列数 = 星期数
+  const padL = 10; // 左侧边距
+  const padT = 16; // 顶部星期标签
   const width = padL + cols * (cell + gap) + gap;
   const height = padT + rows * (cell + gap) + gap;
   // 格子变大时同步放大标签字号
   const labelFont = cell >= 16 ? 11 : 8;
-  const monthFont = cell >= 16 ? 12 : 9;
 
   // 固定 5 级绿色阶，任意主题下均有层次
   const color = (minutes: number): string => {
@@ -155,21 +152,17 @@ export function renderHeatmap(container: HTMLElement, opts: HeatmapOptions): voi
 
   const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, width: String(width), height: String(height), xmlns: SVG_NS });
 
-  // 顶部月份标签
-  svg.appendChild(svgEl("text", { x: String(padL), y: String(padT - 4), fill: "var(--text-muted)", "font-size": String(monthFont) }, opts.monthLabel));
-
-  // 左侧星期标签（周一 / 周三 / 周五）
-  const weekLabels = ["一", "", "三", "", "五", "", ""];
-  weekLabels.forEach((w, r) => {
-    if (!w) return;
-    const y = padT + gap + r * (cell + gap) + cell / 2 + 4;
-    svg.appendChild(svgEl("text", { x: String(padL - 6), y: String(y), "text-anchor": "end", fill: "var(--text-muted)", "font-size": String(labelFont) }, w));
+  // 顶部星期标签（一 ~ 日），与各列对齐
+  const weekLabels = ["一", "二", "三", "四", "五", "六", "日"];
+  weekLabels.forEach((w, c) => {
+    const x = padL + gap + c * (cell + gap) + cell / 2;
+    svg.appendChild(svgEl("text", { x: String(x), y: String(padT - 4), "text-anchor": "middle", fill: "var(--text-muted)", "font-size": String(labelFont) }, w));
   });
 
-  for (let c = 0; c < cols; c++) {
-    const col = opts.cols[c];
-    for (let r = 0; r < rows; r++) {
-      const day = col[r];
+  for (let r = 0; r < rows; r++) {
+    const week = opts.cols[r];
+    for (let c = 0; c < cols; c++) {
+      const day = week?.[c];
       const x = padL + gap + c * (cell + gap);
       const y = padT + gap + r * (cell + gap);
       if (!day || !day.isCurrent) {
