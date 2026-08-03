@@ -90,7 +90,7 @@ export class StatusBarDetailModal extends Modal {
     const session = this.plugin.session.get();
     const path = engine?.getCurrentPath() ?? null;
     const fileStats = path ? this.plugin.store?.getFileStats(path) : undefined;
-    const global = this.plugin.store.getGlobalStats();
+    const globalStats = this.plugin.store.getGlobalStats();
     const todayKey = dateKey(new Date());
     const settings = this.plugin.settings;
 
@@ -120,7 +120,7 @@ export class StatusBarDetailModal extends Modal {
       session ? `闲置 ${formatDuration(Math.max(0, spanMs - session.activeTimeMs))}` : "", "green");
     this.metric(timeGroup, "file-active", "文件累计活跃", fileStats ? formatDuration(fileStats.activeTimeMs) : "—",
       "历史累计编辑时长", "blue");
-    this.metric(timeGroup, "today-active", "今日编辑时长", formatDuration(global.dailyActiveByDate[todayKey] ?? 0), "全天活跃累计", "orange");
+    this.metric(timeGroup, "today-active", "今日编辑时长", formatDuration(globalStats.dailyActiveByDate[todayKey] ?? 0), "全天活跃累计", "orange");
 
     // ---- 速度指标 ----
     const speedGroup = this.group(contentEl, "速度指标", "zap");
@@ -128,12 +128,12 @@ export class StatusBarDetailModal extends Modal {
       session ? `WPM ${Math.round(engine?.getWpm() ?? 0)}（60秒滑动窗口）` : "", "blue");
     this.metric(speedGroup, "peak", "会话峰值速度", session ? `${formatNumber(session.peakSpeed)} 字/分` : "—",
       "10 秒窗口最高瞬时速度", "orange");
-    this.metric(speedGroup, "today-gross", "今日总输入", formatNumber(global.dailyGrossByDate[todayKey] ?? 0),
-      `终身累计 ${formatNumber(global.grossTypedTotal)}`, "purple");
+    this.metric(speedGroup, "today-gross", "今日总输入", formatNumber(globalStats.dailyGrossByDate[todayKey] ?? 0),
+      `终身累计 ${formatNumber(globalStats.grossTypedTotal)}`, "purple");
 
     // ---- 今日目标进度 ----
-    const todayWords = global.dailyGrossByDate[todayKey] ?? 0;
-    const todayMs = global.dailyActiveByDate[todayKey] ?? 0;
+    const todayWords = globalStats.dailyGrossByDate[todayKey] ?? 0;
+    const todayMs = globalStats.dailyActiveByDate[todayKey] ?? 0;
     const goals = contentEl.createDiv({ cls: "typelog-modal-goals" });
     const goalItem = (ratio: number, ringLabel: string, label: string, sub: string) => {
       const g = goals.createDiv({ cls: "typelog-modal-goal" });
