@@ -1,5 +1,5 @@
 // TypeLog 设置页
-import { App, PluginSettingTab, Setting, setIcon } from "obsidian";
+import { App, PluginSettingTab, Setting, setIcon, type SettingDefinitionItem } from "obsidian";
 import type TypeLogPlugin from "../main";
 import { CountMode, WindowMode } from "../core/settings";
 import { HardResetModal } from "./hardResetModal";
@@ -7,6 +7,11 @@ import { HardResetModal } from "./hardResetModal";
 export class TypeLogSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: TypeLogPlugin) {
     super(app, plugin);
+  }
+
+  // 本页使用自定义渲染（display），此处保持空实现以兼容 1.13.0+ 的设置搜索索引。
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    return [];
   }
 
   display(): void {
