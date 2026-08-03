@@ -3,7 +3,10 @@ import { Vault } from "obsidian";
 import type { StatsStorageAdapter } from "../core/statsStore";
 
 interface NodeRequire {
-  (m: string): any;
+  (m: "fs"): typeof import("fs");
+  (m: "os"): typeof import("os");
+  (m: "path"): typeof import("path");
+  (m: string): unknown;
 }
 
 // 桌面端 Electron 环境才有 Node require
@@ -35,7 +38,7 @@ export class AdaptiveStorageAdapter implements StatsStorageAdapter {
       const fs = this.nodeRequire?.("fs");
       if (fs) {
         try {
-          return (await fs.promises.readFile(path, "utf8")) as string;
+          return await fs.promises.readFile(path, "utf8");
         } catch {
           return null;
         }
