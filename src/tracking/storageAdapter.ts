@@ -2,10 +2,30 @@
 import { Vault } from "obsidian";
 import type { StatsStorageAdapter } from "../core/statsStore";
 
+// 显式声明用到的 Node 模块接口，避免依赖 @types/node 的类型解析（评审 lint 会将其视为 any）
+interface FsPromisesApi {
+  readFile(path: string, encoding: string): Promise<string>;
+  mkdir(path: string, options: { recursive: boolean }): Promise<void>;
+  writeFile(path: string, content: string, encoding: string): Promise<void>;
+  rename(oldPath: string, newPath: string): Promise<void>;
+}
+
+interface FsModuleApi {
+  promises: FsPromisesApi;
+}
+
+interface OsModuleApi {
+  homedir(): string;
+}
+
+interface PathModuleApi {
+  join(...parts: string[]): string;
+}
+
 interface NodeRequire {
-  (m: "fs"): typeof import("fs");
-  (m: "os"): typeof import("os");
-  (m: "path"): typeof import("path");
+  (m: "fs"): FsModuleApi;
+  (m: "os"): OsModuleApi;
+  (m: "path"): PathModuleApi;
   (m: string): unknown;
 }
 
