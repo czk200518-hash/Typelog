@@ -605,3 +605,13 @@
 .typelog-floating-view .workspace-leaf-content {
   min-width: 340px;
 }
+
+/* ---- 危险操作按钮 ---- */
+.typelog-btn-danger {
+  color: var(--text-error) !important;
+  border-color: var(--text-error) !important;
+}
+
+.typelog-btn-danger:hover {
+  background: rgba(var(--color-red-rgb), 0.15) !important;
+}
