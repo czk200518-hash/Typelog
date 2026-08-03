@@ -2,7 +2,7 @@
 // 状态栏显示：当前速度 | 净字数 | 今日总输入量
 import { Modal, setIcon } from "obsidian";
 import type TypeLogPlugin from "../main";
-import { dateKey, formatDuration, formatNumber } from "../core/format";
+import { dateKey, formatDuration, formatNumber, pad2 } from "../core/format";
 import { renderRingProgress } from "./svg";
 
 export class StatusBarController {
@@ -10,6 +10,7 @@ export class StatusBarController {
   private speedEl!: HTMLElement;
   private netEl!: HTMLElement;
   private todayEl!: HTMLElement;
+  private pomodoroEl!: HTMLElement;
   private lastRender = 0;
   private built = false;
 
@@ -29,6 +30,14 @@ export class StatusBarController {
     this.speedEl = this.el.createSpan({ cls: "typelog-sb-speed" });
     this.netEl = this.el.createSpan({ cls: "typelog-sb-net" });
     this.todayEl = this.el.createSpan({ cls: "typelog-sb-today" });
+
+    // 番茄钟入口：点击开始/停止（独立于详情弹窗）
+    this.pomodoroEl = this.el.createSpan({ cls: "typelog-sb-pomodoro" });
+    this.pomodoroEl.title = "番茄钟：点击开始/停止";
+    this.pomodoroEl.addEventListener("click", (evt) => {
+      evt.stopPropagation();
+      this.plugin.togglePomodoro();
+    });
 
     this.el.addEventListener("click", (evt) => {
       evt.stopPropagation();
@@ -56,6 +65,47 @@ export class StatusBarController {
     const todayKey = dateKey(new Date());
     const todayGross = this.plugin.store?.getGlobalStats().dailyGrossByDate[todayKey] ?? 0;
     this.todayEl.setText(`今日${formatNumber(todayGross)}`);
+
+    this.renderPomodoro();
+  }
+
+  // 番茄钟显示：未开始 → “🍅 开始”；运行中 → “🍅 mm:ss”倒计时
+  private renderPomodoro() {
+    const engine = this.plugin.engine;
+    if (!engine) return;
+    if (!this.plugin.settings.pomodoroEnabled) {
+      this.pomodoroEl.setText("");
+      this.pomodoroEl.removeClass("typelog-sb-pomodoro-running");
+      this.pomodoroEl.removeClass("typelog-sb-pomodoro-idle");
+      this.pomodoroEl.removeClass("typelog-sb-pomodoro-paused");
+      this.pomodoroEl.title = "番茄钟未开启（设置中开启）";
+      return;
+    }
+    if (engine.isPomodoroRunning()) {
+      const remain = engine.getPomodoroRemainingMs();
+      const totalSec = Math.max(0, Math.ceil(remain / 1000));
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      if (engine.isPomodoroPaused()) {
+        this.pomodoroEl.setText(`🍅 ⏸ ${m}:${pad2(s)}`);
+        this.pomodoroEl.addClass("typelog-sb-pomodoro-paused");
+        this.pomodoroEl.removeClass("typelog-sb-pomodoro-running");
+        this.pomodoroEl.removeClass("typelog-sb-pomodoro-idle");
+        this.pomodoroEl.title = "番茄钟已暂停（剩余 " + `${m}:${pad2(s)}` + "），点击继续";
+      } else {
+        this.pomodoroEl.setText(`🍅 ${m}:${pad2(s)}`);
+        this.pomodoroEl.addClass("typelog-sb-pomodoro-running");
+        this.pomodoroEl.removeClass("typelog-sb-pomodoro-paused");
+        this.pomodoroEl.removeClass("typelog-sb-pomodoro-idle");
+        this.pomodoroEl.title = `番茄钟进行中（剩余 ${m}:${pad2(s)}），点击停止`;
+      }
+    } else {
+      this.pomodoroEl.setText("🍅 开始");
+      this.pomodoroEl.addClass("typelog-sb-pomodoro-idle");
+      this.pomodoroEl.removeClass("typelog-sb-pomodoro-running");
+      this.pomodoroEl.removeClass("typelog-sb-pomodoro-paused");
+      this.pomodoroEl.title = "番茄钟未开始，点击开始";
+    }
   }
 
   destroy() {
