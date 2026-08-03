@@ -34,7 +34,7 @@ export default class TypeLogPlugin extends Plugin {
     this.store = new StatsStore(adapter, {
       fileStats: ".typelog/file-stats.json",
       project: ".typelog/project.json",
-      global: globalPath,
+      globalStats: globalPath,
     });
     await this.store.load();
 
