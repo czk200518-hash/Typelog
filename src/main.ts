@@ -81,7 +81,7 @@ export default class TypeLogPlugin extends Plugin {
     const modeText = this.settings.pomodoroMode === "real" ? "计时" : "连续编辑";
     const notice = new Notice(`🍅 番茄钟完成！已${modeText} ${formatMinutesSeconds(this.settings.pomodoroMinutes)}，休息一下吧！`, 6000);
     // 完成提醒改为屏幕中央弹窗
-    notice.noticeEl.addClass("typelog-notice-center");
+    notice.messageEl.addClass("typelog-notice-center");
     // 一轮结束自动复位，需手动开始下一轮
     this.engine.stopPomodoro();
   }
