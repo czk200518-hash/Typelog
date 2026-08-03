@@ -5,11 +5,6 @@ import { renderLineChart, renderHeatmap, renderRingProgress } from "./svg";
 
 export const VIEW_TYPE_TYPELOG = "typelog-dashboard";
 
-// 时长显示（整分钟不带小数，非整分钟保留 1 位小数）
-function formatMinutes(minutes: number): string {
-  return minutes % 1 === 0 ? String(minutes) : minutes.toFixed(1);
-}
-
 export class DashboardView extends ItemView {
   private root!: HTMLElement;
   private lastRender = 0;
@@ -137,10 +132,7 @@ export class DashboardView extends ItemView {
     el.toggleClass("typelog-compact", compact);
 
     const globalStats = this.plugin.store.getGlobalStats();
-    const session = this.plugin.session.get();
-    const engine = this.plugin.engine;
     const todayKey = dateKey(new Date());
-    const settings = this.plugin.settings;
 
     // ---- 悬浮窗精简模式：仅今日三数据 ----
     if (compact) {
