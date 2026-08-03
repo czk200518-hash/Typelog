@@ -6,6 +6,9 @@ export type CountMode = "strict" | "loose";
 // 统计窗口模式
 export type WindowMode = "none" | "sidebar" | "floating";
 
+// 番茄钟计时方式：real=纯计时（启动后按真实时间流逝，不依赖打字）；active=仅活跃时计时
+export type PomodoroMode = "real" | "active";
+
 export interface TypeLogSettings {
   // strict=仅汉字与英文单词；loose=所有可见字符
   countMode: CountMode;
@@ -23,7 +26,9 @@ export interface TypeLogSettings {
   pomodoroEnabled: boolean;
   // 番茄钟时长（分钟）
   pomodoroMinutes: number;
-  // 状态栏显示统计
+  // 番茄钟计时方式：real=纯计时；active=仅活跃时计时
+  pomodoroMode: PomodoroMode;
+  // 
   showStatusBar: boolean;
   // none=不显示窗口；sidebar=侧边栏面板；floating=悬浮窗
   windowMode: WindowMode;
@@ -40,6 +45,7 @@ export const DEFAULT_SETTINGS: TypeLogSettings = {
   dailyTimeGoalMin: 120,
   pomodoroEnabled: true,
   pomodoroMinutes: 25,
+  pomodoroMode: "active",
   showStatusBar: true,
   windowMode: "sidebar",
   popoutAlwaysOnTop: true,
