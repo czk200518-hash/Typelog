@@ -1,5 +1,6 @@
 // SVG 图表工具（零依赖）：折线图 + 热力图 + 进度环
 // 全部通过 DOM API 构建，不使用 innerHTML
+import { t } from "../core/i18n";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -35,7 +36,7 @@ export function renderLineChart(container: HTMLElement, points: ChartPoint[], op
   const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, xmlns: SVG_NS });
 
   if (points.length === 0) {
-    svg.appendChild(svgEl("text", { x: String(width / 2), y: String(height / 2), "text-anchor": "middle", fill: "var(--text-muted)", "font-size": "11" }, "暂无数据"));
+    svg.appendChild(svgEl("text", { x: String(width / 2), y: String(height / 2), "text-anchor": "middle", fill: "var(--text-muted)", "font-size": "11" }, t("svg.noData")));
     container.appendChild(svg);
     return;
   }
@@ -84,7 +85,7 @@ export function renderLineChart(container: HTMLElement, points: ChartPoint[], op
     const idx = Math.round((maxIdx * i) / xTicks);
     const x = mapX(points[idx].x);
     svg.appendChild(svgEl("line", { x1: x.toFixed(1), y1: String(padT), x2: x.toFixed(1), y2: String(height - padB), stroke: "var(--background-modifier-border)", "stroke-width": "1", "stroke-dasharray": "3,3" }));
-    svg.appendChild(svgEl("text", { x: x.toFixed(1), y: String(height - padB + 12), "text-anchor": "middle", fill: "var(--text-muted)", "font-size": "8" }, `${idx}分`));
+    svg.appendChild(svgEl("text", { x: x.toFixed(1), y: String(height - padB + 12), "text-anchor": "middle", fill: "var(--text-muted)", "font-size": "8" }, t("svg.xMinute", { n: idx })));
   }
   // X 轴轴线
   svg.appendChild(svgEl("line", { x1: String(padL), y1: String(height - padB), x2: String(width - padR), y2: String(height - padB), stroke: "var(--background-modifier-border)", "stroke-width": "1" }));
@@ -152,8 +153,8 @@ export function renderHeatmap(container: HTMLElement, opts: HeatmapOptions): voi
 
   const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, width: String(width), height: String(height), xmlns: SVG_NS });
 
-  // 顶部星期标签（一 ~ 日），与各列对齐
-  const weekLabels = ["一", "二", "三", "四", "五", "六", "日"];
+  // 顶部星期标签，与各列对齐
+  const weekLabels = [t("svg.week1"), t("svg.week2"), t("svg.week3"), t("svg.week4"), t("svg.week5"), t("svg.week6"), t("svg.week7")];
   weekLabels.forEach((w, c) => {
     const x = padL + gap + c * (cell + gap) + cell / 2;
     svg.appendChild(svgEl("text", { x: String(x), y: String(padT - 4), "text-anchor": "middle", fill: "var(--text-muted)", "font-size": String(labelFont) }, w));
@@ -176,8 +177,14 @@ export function renderHeatmap(container: HTMLElement, opts: HeatmapOptions): voi
   container.appendChild(svg);
 }
 
+// 进度环增量更新句柄：仅更新进度弧/百分比文字/超 100% 配色，不重建节点
+export interface RingProgressHandle {
+  setProgress(ratio: number): void;
+}
+
 // 每日目标环形进度条（可超过 100%，文字显示实际百分比）
-export function renderRingProgress(container: HTMLElement, ratio: number, label: string, size = 72): void {
+// 返回句柄供增量更新（不传则忽略，向后兼容）
+export function renderRingProgress(container: HTMLElement, ratio: number, label: string, size = 72): RingProgressHandle {
   // 进度环画满即止，文字显示真实百分比（可超过 100%）
   const clamped = Math.max(0, Math.min(1, ratio));
   const over = ratio > 1;
@@ -190,9 +197,20 @@ export function renderRingProgress(container: HTMLElement, ratio: number, label:
 
   const svg = svgEl("svg", { viewBox: `0 0 ${size} ${size}`, xmlns: SVG_NS });
   svg.appendChild(svgEl("circle", { cx: String(c), cy: String(c), r: String(r), fill: "none", stroke: "var(--background-modifier-border)", "stroke-width": "6" }));
-  svg.appendChild(svgEl("circle", { cx: String(c), cy: String(c), r: String(r), fill: "none", stroke, "stroke-width": "6", "stroke-linecap": "round", "stroke-dasharray": circumference.toFixed(1), "stroke-dashoffset": offset.toFixed(1), transform: `rotate(-90 ${c} ${c})` }));
-  svg.appendChild(svgEl("text", { x: String(c), y: String(c - 2), "text-anchor": "middle", fill: "var(--text-normal)", "font-size": "14", "font-weight": "600" }, `${pct}%`));
+  const progressEl = svgEl("circle", { cx: String(c), cy: String(c), r: String(r), fill: "none", stroke, "stroke-width": "6", "stroke-linecap": "round", "stroke-dasharray": circumference.toFixed(1), "stroke-dashoffset": offset.toFixed(1), transform: `rotate(-90 ${c} ${c})` });
+  svg.appendChild(progressEl);
+  const pctEl = svgEl("text", { x: String(c), y: String(c - 2), "text-anchor": "middle", fill: "var(--text-normal)", "font-size": "14", "font-weight": "600" }, `${pct}%`);
+  svg.appendChild(pctEl);
   svg.appendChild(svgEl("text", { x: String(c), y: String(c + 12), "text-anchor": "middle", fill: "var(--text-muted)", "font-size": "8" }, label));
 
   container.appendChild(svg);
+
+  return {
+    setProgress(nextRatio: number) {
+      const nextClamped = Math.max(0, Math.min(1, nextRatio));
+      progressEl.setAttribute("stroke", nextRatio > 1 ? "var(--color-green)" : "var(--interactive-accent)");
+      progressEl.setAttribute("stroke-dashoffset", (circumference * (1 - nextClamped)).toFixed(1));
+      pctEl.textContent = `${Math.round(nextRatio * 100)}%`;
+    },
+  };
 }
