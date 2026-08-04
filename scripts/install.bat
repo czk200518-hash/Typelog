@@ -12,7 +12,7 @@ if errorlevel 1 (
 )
 
 set "VAULT=%~1"
-if "%VAULT%"="" set "VAULT=%CD%\test-vault"
+if "%VAULT%"=="" set "VAULT=%CD%\test-vault"
 set "DEST=%VAULT%\.obsidian\plugins\typelog"
 
 echo [2/4] Copying to %DEST%
