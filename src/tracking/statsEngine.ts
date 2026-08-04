@@ -187,11 +187,32 @@ export class StatsEngine {
     this.activeMachine.start(now);
     this.deps.store.touchOpen(abs, now);
     const mode = this.deps.getSettings().countMode;
-    this.deps.session.begin(abs, "", mode, now);
-    // 异步读文本校准起点净字数
-    void this.deps.vault.cachedRead(file).then((text) => {
-      this.deps.session.setNetStartWords(text, mode);
-    });
+    // 优先同步取当前编辑器文本作为会话起点，避免“空文本 begin + 异步校准”与
+    // 打开瞬间的编辑事件竞态导致净字数重复/漏计；编辑器未就绪时退回异步 cachedRead 兜底
+    let initialText = "";
+    let calibrated = false;
+    try {
+      const view = this.deps.workspace.getActiveViewOfType(MarkdownView);
+      if (view && view.file === file) {
+        initialText = view.editor.getValue();
+        calibrated = true;
+      }
+    } catch {
+      // 测试桩/极端环境无 workspace 能力，走异步兜底
+      calibrated = false;
+    }
+    this.deps.session.begin(abs, initialText, mode, now);
+    if (!calibrated) {
+      // 捕获目标路径，回调时校验当前文件未切换，防止旧文件的校准结果覆盖新会话起点
+      const target = abs;
+      void this.deps.vault.cachedRead(file).then((text) => {
+        if (this.currentPath === target) {
+          this.deps.session.setNetStartWords(text, mode);
+        }
+      });
+    }
+    // 重置分钟采样基准，避免切换文件后首分钟内无采样点
+    this.lastMinute = Math.floor(now / 60_000);
     this.deps.onUiUpdate();
   };
 
@@ -207,7 +228,7 @@ export class StatsEngine {
     this.deps.store.recordChange(this.currentPath, stats.typed, stats.deleted);
     this.speedTracker.addChars(stats.typedManual, now);
     this.deps.session.setPeak(this.speedTracker.getPeak());
-    this.deps.store.recordPeak(this.speedTracker.getPeak());
+    this.deps.store.recordPeak(this.speedTracker.getPeak(), now);
     this.activeMachine.notifyActivity(now);
     this.deps.onUiUpdate();
   };
@@ -218,7 +239,7 @@ export class StatsEngine {
     const res = this.activeMachine.tick(now, this.currentPath !== null);
     if (res.activeMs > 0 && this.currentPath) {
       this.deps.session.addActiveMs(res.activeMs);
-      this.deps.store.recordActiveTime(this.currentPath, res.activeMs, new Date().getHours());
+      this.deps.store.recordActiveTime(this.currentPath, res.activeMs, new Date(now).getHours(), now);
     }
     // 分钟级采样（字数增长曲线）
     if (this.currentPath) {
