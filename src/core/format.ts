@@ -1,4 +1,5 @@
 // 本地日期工具（本机时区）
+import { t } from "./i18n";
 
 export function pad2(n: number): string {
   return n < 10 ? "0" + n : "" + n;
@@ -9,14 +10,14 @@ export function dateKey(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-// 毫秒格式化，如 2小时 05分 或 45秒
+// 毫秒格式化，如 2小时 05分 或 45秒（单位随界面语言）
 export function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
-  if (totalSec < 60) return `${totalSec}秒`;
+  if (totalSec < 60) return t("dur.sec", { n: totalSec });
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
-  if (h > 0) return `${h}小时${pad2(m)}分`;
-  return `${m}分${pad2(totalSec % 60)}秒`;
+  if (h > 0) return t("dur.hour", { h, m: pad2(m) });
+  return t("dur.min", { m, p: pad2(totalSec % 60) });
 }
 
 // 分钟（可为小数）固定格式化为 "X分Y秒"，如 1分10秒、5分0秒、0分3秒
