@@ -3,6 +3,7 @@ import { AbstractInputSuggest, App, FileSystemAdapter, Modal, Notice, Setting, T
 import type TypeLogPlugin from "../main";
 import { defaultExportName } from "../core/format";
 import { getNodeRequire } from "../tracking/storageAdapter";
+import { t } from "../core/i18n";
 
 // vault 文件夹建议器（输入时按路径前缀补全）
 export class FolderSuggest extends AbstractInputSuggest<TFolder> {
@@ -56,14 +57,14 @@ export class ExportStatsModal extends Modal {
 
   constructor(app: App, private plugin: TypeLogPlugin) {
     super(app);
-    this.titleEl.setText("导出统计报表");
+    this.titleEl.setText(t("export.title"));
   }
 
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
 
-    new Setting(contentEl).setName("导出格式").addDropdown((dd) =>
+    new Setting(contentEl).setName(t("export.format")).addDropdown((dd) =>
       dd
         .addOption("json", "JSON")
         .addOption("csv", "CSV")
@@ -73,7 +74,7 @@ export class ExportStatsModal extends Modal {
 
     let dirText: { setValue(v: string): void };
     new Setting(contentEl)
-      .setName("导出目录")
+      .setName(t("export.dir"))
       .addText((text) => {
         dirText = text;
         text.setValue(this.dir).onChange((v) => (this.dir = v.trim() || "typelog-exports"));
@@ -81,10 +82,10 @@ export class ExportStatsModal extends Modal {
         new FolderSuggest(this.app, text.inputEl);
       })
       .addButton((b) =>
-        b.setButtonText("浏览…").onClick(async () => {
+        b.setButtonText(t("export.browse")).onClick(async () => {
           const chosen = await pickSystemFolder();
           if (!chosen) {
-            new Notice("TypeLog：当前环境不支持系统文件夹选择，请手动输入路径");
+            new Notice(t("export.browseFail"));
             return;
           }
           this.dir = this.toVaultRelative(chosen);
@@ -93,14 +94,14 @@ export class ExportStatsModal extends Modal {
       );
 
     new Setting(contentEl)
-      .setName("文件名")
-      .setDesc("不需要包含扩展名")
+      .setName(t("export.fileName"))
+      .setDesc(t("export.fileNameDesc"))
       .addText((text) =>
         text.setValue(this.fileName).onChange((v) => (this.fileName = v.trim())),
       );
 
     new Setting(contentEl).addButton((b) =>
-      b.setButtonText("导出").setCta().onClick(() => this.doExport()),
+      b.setButtonText(t("export.doExport")).setCta().onClick(() => this.doExport()),
     );
   }
 
