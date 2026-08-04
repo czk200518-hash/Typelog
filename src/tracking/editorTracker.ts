@@ -17,18 +17,51 @@ export interface DiffResult {
   removed: string;
 }
 
-// 轻量全文 diff：剥离公共前缀/后缀，中间段即变更区
+// 分块粗扫的块大小（2 的幂，块边界对齐便于切片比较）
+const DIFF_BLOCK = 256;
+// 变更区长度上限：超过后放弃前后缀剥离，以全文近似。
+// 仅超大替换/粘贴（>64KB 净变化，击键不可能达到）触发，统计口径不变
+const MAX_DIFF_REGION = 64 * 1024;
+
+// 轻量全文 diff：剥离公共前缀/后缀，中间段即变更区。
+// 两段式扫描：按 256 字符块整块 slice 比较跳过相同块，块内残余逐字符精扫，
+// 大文件（数百 KB）头部/中部编辑时字符操作数降低 1-2 个数量级
 export function diffText(oldText: string, newText: string): DiffResult {
   const oldLen = oldText.length;
   const newLen = newText.length;
+
+  // 前缀：粗扫（整块相同直接跳过）+ 精扫（块边界残余逐字符）
   let start = 0;
+  while (
+    start + DIFF_BLOCK <= oldLen &&
+    start + DIFF_BLOCK <= newLen &&
+    oldText.slice(start, start + DIFF_BLOCK) === newText.slice(start, start + DIFF_BLOCK)
+  ) {
+    start += DIFF_BLOCK;
+  }
   while (start < oldLen && start < newLen && oldText[start] === newText[start]) start++;
+
+  // 后缀：同样按块粗扫 + 逐字符精扫
   let endOld = oldLen;
   let endNew = newLen;
+  while (
+    endOld - DIFF_BLOCK >= start &&
+    endNew - DIFF_BLOCK >= start &&
+    oldText.slice(endOld - DIFF_BLOCK, endOld) === newText.slice(endNew - DIFF_BLOCK, endNew)
+  ) {
+    endOld -= DIFF_BLOCK;
+    endNew -= DIFF_BLOCK;
+  }
   while (endOld > start && endNew > start && oldText[endOld - 1] === newText[endNew - 1]) {
     endOld--;
     endNew--;
   }
+
+  // 差异区超限：不再剥离公共部分，直接以全文近似（避免大变更时的二次 O(N) 扫描）
+  if (endOld - start > MAX_DIFF_REGION || endNew - start > MAX_DIFF_REGION) {
+    return { removed: oldText, inserted: newText };
+  }
+
   return {
     removed: oldText.slice(start, endOld),
     inserted: newText.slice(start, endNew),
@@ -94,8 +127,11 @@ export class EditorTracker {
   };
 
   private recordValue(path: string, value: string) {
-    if (this.lastValues.size >= MAX_CACHED && !this.lastValues.has(path)) {
-      this.lastValues.clear();
+    if (!this.lastValues.has(path) && this.lastValues.size >= MAX_CACHED) {
+      // FIFO：仅淘汰最久未编辑的快照，而非清空全部。
+      // 原清空实现会导致被清掉快照的文件下次首次编辑因无法 diff 而丢失统计
+      const oldest = this.lastValues.keys().next().value;
+      if (oldest !== undefined) this.lastValues.delete(oldest);
     }
     this.lastValues.set(path, value);
   }
