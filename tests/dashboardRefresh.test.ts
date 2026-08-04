@@ -88,6 +88,7 @@ interface GlobalStatsMock {
 // ---- 模拟插件与可变数据 ----
 function makePlugin() {
   const settings: TypeLogSettings = {
+    language: "zh",
     countMode: "strict",
     includePasteInSpeed: false,
     idleThresholdSec: 5,
@@ -100,6 +101,8 @@ function makePlugin() {
     showStatusBar: true,
     windowMode: "sidebar",
     popoutAlwaysOnTop: true,
+    purgeInactiveDays: 0,
+    dailyRetentionDays: 0,
   };
   const today = dateKey(new Date());
   const globalStats: GlobalStatsMock = {
@@ -205,7 +208,7 @@ describe("番茄钟时间输入框编辑态下的 UI 刷新", () => {
     // 3) 当前文件活跃时长同步跳动
     expect(sectionValue(root, "当前文件", 3)).toBe("3分00秒");
 
-    // 4) 热力图每秒重绘（svg 节点已更新），且今日格子颜色加深（3 分钟 → #d7f0e0）
+    // 4) 编辑期间走特判路径（不触碰番茄钟区块），热力图重建并刷新今日格颜色（3 分钟 → #d7f0e0）
     const heatSvg1 = root.querySelector(".typelog-heatmap svg");
     expect(heatSvg1).not.toBe(heatSvg0);
     const rects = Array.from(root.querySelectorAll<SVGRectElement>(".typelog-heatmap rect"));
@@ -218,6 +221,8 @@ describe("番茄钟时间输入框编辑态下的 UI 刷新", () => {
     const mm = root.querySelector<HTMLInputElement>(".typelog-pomodoro-time-mm")!;
     const ss = root.querySelector<HTMLInputElement>(".typelog-pomodoro-time-ss")!;
     const flush = () => new Promise<void>((r) => setTimeout(r, 20));
+    // 记录编辑前的热力图 svg（onOpen 全量构建的节点）
+    const heatBefore = root.querySelector(".typelog-heatmap svg");
 
     // 聚焦分钟框 → 编辑态
     mm.focus();
@@ -233,15 +238,17 @@ describe("番茄钟时间输入框编辑态下的 UI 刷新", () => {
     await flush();
     expect((view as unknown as { timeEditing: boolean }).timeEditing).toBe(true);
 
-    // 失焦到其他区域（点击文档正文）：编辑态结束，界面重建
+    // 失焦到其他区域（点击文档正文）：编辑态结束，界面刷新
     mm.blur();
     await flush();
     expect((view as unknown as { timeEditing: boolean }).timeEditing).toBe(false);
 
-    // 失焦后刷新恢复正常：重新渲染出全新输入框
+    // 失焦后刷新：稳态走增量渲染，结构完全复用（输入框与热力图 svg 均不重建）
     view.refresh();
     const mm2 = root.querySelector(".typelog-pomodoro-time-mm");
     expect(mm2).toBeTruthy();
-    expect(mm2).not.toBe(mm);
+    expect(mm2).toBe(mm);
+    const heatAfter = root.querySelector(".typelog-heatmap svg");
+    expect(heatAfter).toBe(heatBefore);
   });
 });
