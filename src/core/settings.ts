@@ -9,7 +9,12 @@ export type WindowMode = "none" | "sidebar" | "floating";
 // 番茄钟计时方式：real=纯计时（启动后按真实时间流逝，不依赖打字）；active=仅活跃时计时
 export type PomodoroMode = "real" | "active";
 
+// 界面语言
+export type UiLang = "zh" | "en";
+
 export interface TypeLogSettings {
+  // 界面语言（默认中文，切换后立即生效并持久化）
+  language: UiLang;
   // strict=仅汉字与英文单词；loose=所有可见字符
   countMode: CountMode;
   // 粘贴/拖拽内容是否计入打字速度
@@ -34,9 +39,14 @@ export interface TypeLogSettings {
   windowMode: WindowMode;
   // 悬浮窗置顶
   popoutAlwaysOnTop: boolean;
+  // 数据清理：清理超过 N 天未访问的文件统计（0=不清理）
+  purgeInactiveDays: number;
+  // 数据清理：每日统计（daily*/heatmap）仅保留最近 N 天（0=不清理）
+  dailyRetentionDays: number;
 }
 
 export const DEFAULT_SETTINGS: TypeLogSettings = {
+  language: "zh",
   countMode: "strict",
   includePasteInSpeed: false,
   idleThresholdSec: 5,
@@ -49,4 +59,7 @@ export const DEFAULT_SETTINGS: TypeLogSettings = {
   showStatusBar: true,
   windowMode: "sidebar",
   popoutAlwaysOnTop: true,
+  // 数据清理默认均不启用（涉及数据删除，需用户显式配置天数后再执行）
+  purgeInactiveDays: 0,
+  dailyRetentionDays: 0,
 };
