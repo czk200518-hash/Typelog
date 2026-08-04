@@ -6,22 +6,35 @@ const CJK_REGEX = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/g;
 // 英文单词：字母数字下划线开头，可含连字符/撇号
 const WORD_REGEX = /[A-Za-z0-9_]+(?:['-][A-Za-z0-9_]+)*/g;
 
+// 逐匹配计数：迭代器方式不构建匹配数组（大文本下省内存与 GC）；
+// 每次使用独立正则副本，避免共享 lastIndex 引发重入污染
+function countMatches(re: RegExp, text: string): number {
+  let n = 0;
+  const flags = re.flags.includes("g") ? re.flags : re.flags + "g";
+  const r = new RegExp(re.source, flags);
+  for (const _ of text.matchAll(r)) n++;
+  return n;
+}
+
 export function countText(text: string, mode: CountMode): number {
   if (!text) return 0;
   if (mode === "loose") {
-    return text.replace(/\s/g, "").length;
+    // 遍历计数非空白字符，避免 replace 生成中间字符串
+    let n = 0;
+    const re = /\S/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) n++;
+    return n;
   }
-  const cjk = text.match(CJK_REGEX);
-  const words = text.match(WORD_REGEX);
-  return (cjk ? cjk.length : 0) + (words ? words.length : 0);
+  return countMatches(CJK_REGEX, text) + countMatches(WORD_REGEX, text);
 }
 
 export function countCJK(text: string): number {
   if (!text) return 0;
-  return (text.match(CJK_REGEX) || []).length;
+  return countMatches(CJK_REGEX, text);
 }
 
 export function countWords(text: string): number {
   if (!text) return 0;
-  return (text.match(WORD_REGEX) || []).length;
+  return countMatches(WORD_REGEX, text);
 }
