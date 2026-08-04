@@ -2,6 +2,7 @@
 // 第一阶段说明操作内容与后果，点击“继续”进入最终确认；
 // 第二阶段同样说明后果，且确认按钮需等待倒计时结束才能点击。
 import { App, Modal } from "obsidian";
+import { t } from "../core/i18n";
 
 // 单次确认弹窗：说明操作与后果，直接确认/取消（用于停止番茄钟等轻量操作）
 export interface ConfirmOptions {
@@ -26,7 +27,7 @@ export class ConfirmModal extends Modal {
       contentEl.createEl("p", { text: p });
     }
     const row = contentEl.createDiv({ cls: "modal-button-container" });
-    const cancel = row.createEl("button", { text: "取消", cls: "mod-cta" });
+    const cancel = row.createEl("button", { text: t("confirm.cancel"), cls: "mod-cta" });
     cancel.addEventListener("click", () => this.close());
     const ok = row.createEl("button", { text: this.opts.confirmText, cls: "mod-warning" });
     ok.addEventListener("click", () => {
@@ -82,9 +83,9 @@ export class DoubleConfirmModal extends Modal {
       contentEl.createEl("p", { text: p });
     }
     const row = contentEl.createDiv({ cls: "modal-button-container" });
-    const cancel = row.createEl("button", { text: "取消", cls: "mod-cta" });
+    const cancel = row.createEl("button", { text: t("confirm.cancel"), cls: "mod-cta" });
     cancel.addEventListener("click", () => this.close());
-    const next = row.createEl("button", { text: "继续，进入最终确认", cls: "mod-warning" });
+    const next = row.createEl("button", { text: t("confirm.continue"), cls: "mod-warning" });
     next.addEventListener("click", () => this.renderStep2());
   }
 
@@ -96,9 +97,8 @@ export class DoubleConfirmModal extends Modal {
       contentEl.createEl("p", { text: p });
     }
     const row = contentEl.createDiv({ cls: "modal-button-container" });
-    const cancel = row.createEl("button", { text: "取消", cls: "mod-cta" });
+    const cancel = row.createEl("button", { text: t("confirm.cancel"), cls: "mod-cta" });
     cancel.addEventListener("click", () => this.close());
-
     const ok = row.createEl("button", { text: "", cls: "mod-warning" });
     ok.disabled = true;
 
