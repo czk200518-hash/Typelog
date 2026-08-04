@@ -3,7 +3,8 @@
 import { Modal, setIcon } from "obsidian";
 import type TypeLogPlugin from "../main";
 import { dateKey, formatDuration, formatNumber, pad2 } from "../core/format";
-import { renderRingProgress } from "./svg";
+import { renderRingProgress, type RingProgressHandle } from "./svg";
+import { t } from "../core/i18n";
 
 export class StatusBarController {
   private el!: HTMLElement;
@@ -25,7 +26,7 @@ export class StatusBarController {
     this.built = true;
     this.el = this.plugin.addStatusBarItem();
     this.el.addClass("typelog-statusbar");
-    this.el.title = "TypeLog 字迹（点击查看详情）";
+    this.el.title = t("brand.statusbarTitle");
 
     this.speedEl = this.el.createSpan({ cls: "typelog-sb-speed" });
     this.netEl = this.el.createSpan({ cls: "typelog-sb-net" });
@@ -33,7 +34,7 @@ export class StatusBarController {
 
     // 番茄钟入口：点击开始/停止（独立于详情弹窗）
     this.pomodoroEl = this.el.createSpan({ cls: "typelog-sb-pomodoro" });
-    this.pomodoroEl.title = "番茄钟：点击开始/停止";
+    this.pomodoroEl.title = t("sb.pomo.clickTitle");
     this.pomodoroEl.addEventListener("click", (evt) => {
       evt.stopPropagation();
       this.plugin.togglePomodoro();
@@ -57,14 +58,14 @@ export class StatusBarController {
     const engine = this.plugin.engine;
     const session = this.plugin.session.get();
     const cpm = engine?.getCpm() ?? 0;
-    this.speedEl.setText(`${formatNumber(cpm)}字/分`);
+    this.speedEl.setText(t("sb.speed", { n: formatNumber(cpm) }));
 
     const netWords = session ? session.netStartWords + session.deltaWords : 0;
-    this.netEl.setText(`${formatNumber(netWords)}字`);
+    this.netEl.setText(t("sb.net", { n: formatNumber(netWords) }));
 
     const todayKey = dateKey(new Date());
     const todayGross = this.plugin.store?.getGlobalStats().dailyGrossByDate[todayKey] ?? 0;
-    this.todayEl.setText(`今日${formatNumber(todayGross)}`);
+    this.todayEl.setText(t("sb.today", { n: formatNumber(todayGross) }));
 
     this.renderPomodoro();
   }
@@ -78,7 +79,7 @@ export class StatusBarController {
       this.pomodoroEl.removeClass("typelog-sb-pomodoro-running");
       this.pomodoroEl.removeClass("typelog-sb-pomodoro-idle");
       this.pomodoroEl.removeClass("typelog-sb-pomodoro-paused");
-      this.pomodoroEl.title = "番茄钟未开启（设置中开启）";
+      this.pomodoroEl.title = t("sb.pomo.disabledTitle");
       return;
     }
     if (engine.isPomodoroRunning()) {
@@ -91,20 +92,20 @@ export class StatusBarController {
         this.pomodoroEl.addClass("typelog-sb-pomodoro-paused");
         this.pomodoroEl.removeClass("typelog-sb-pomodoro-running");
         this.pomodoroEl.removeClass("typelog-sb-pomodoro-idle");
-        this.pomodoroEl.title = "番茄钟已暂停（剩余 " + `${m}:${pad2(s)}` + "），点击继续";
+        this.pomodoroEl.title = t("sb.pomo.pausedTitle", { t: `${m}:${pad2(s)}` });
       } else {
         this.pomodoroEl.setText(`🍅 ${m}:${pad2(s)}`);
         this.pomodoroEl.addClass("typelog-sb-pomodoro-running");
         this.pomodoroEl.removeClass("typelog-sb-pomodoro-paused");
         this.pomodoroEl.removeClass("typelog-sb-pomodoro-idle");
-        this.pomodoroEl.title = `番茄钟进行中（剩余 ${m}:${pad2(s)}），点击停止`;
+        this.pomodoroEl.title = t("sb.pomo.runningTitle", { t: `${m}:${pad2(s)}` });
       }
     } else {
-      this.pomodoroEl.setText("🍅 开始");
+      this.pomodoroEl.setText(t("sb.pomo.start"));
       this.pomodoroEl.addClass("typelog-sb-pomodoro-idle");
       this.pomodoroEl.removeClass("typelog-sb-pomodoro-running");
       this.pomodoroEl.removeClass("typelog-sb-pomodoro-paused");
-      this.pomodoroEl.title = "番茄钟未开始，点击开始";
+      this.pomodoroEl.title = t("sb.pomo.idleTitle");
     }
   }
 
@@ -117,25 +118,99 @@ export class StatusBarController {
 
 // ==================== 详情卡片 ====================
 
+// 详情弹窗：打开时构建一次结构并缓存可变节点引用，每秒仅增量更新数值（零节点重建）
 export class StatusBarDetailModal extends Modal {
   private timer: number | null = null;
+  // 可变节点引用（构建时收集，刷新时仅 setText/更新属性）
+  private fileEl!: HTMLElement;
+  private netWordsEl!: HTMLElement;
+  private deltaEl!: HTMLElement;
+  private grossEl!: HTMLElement;
+  private deletedEl!: HTMLElement;
+  private sessionActiveEl!: HTMLElement;
+  private idleEl!: HTMLElement;
+  private fileActiveEl!: HTMLElement;
+  private todayActiveEl!: HTMLElement;
+  private cpmEl!: HTMLElement;
+  private wpmEl!: HTMLElement;
+  private peakEl!: HTMLElement;
+  private todayGrossEl!: HTMLElement;
+  private lifetimeEl!: HTMLElement;
+  private wordRing!: RingProgressHandle;
+  private wordRingSubEl!: HTMLElement;
+  private timeRing!: RingProgressHandle;
+  private timeRingSubEl!: HTMLElement;
 
   constructor(private plugin: TypeLogPlugin) {
     super(plugin.app);
-    this.titleEl.setText("TypeLog 字迹 · 统计详情");
+    this.titleEl.setText(t("modal.title"));
   }
 
   onOpen() {
-    this.render();
-    // 每秒刷新保持最新
-    this.timer = window.setInterval(() => this.render(), 1000);
+    this.buildStructure();
+    this.updateValues();
+    // 每秒只刷新数值，不重建 DOM
+    this.timer = window.setInterval(() => this.updateValues(), 1000);
   }
 
-  private render() {
+  // 构建一次全部结构，缓存可变节点引用
+  private buildStructure() {
     const { contentEl } = this;
-    contentEl.empty();
     contentEl.addClass("typelog-modal");
 
+    // ---- 头部横幅 ----
+    const header = contentEl.createDiv({ cls: "typelog-modal-header" });
+    const logo = header.createDiv({ cls: "typelog-modal-logo" });
+    setIcon(logo, "bar-chart-2");
+    const titleBox = header.createDiv({ cls: "typelog-modal-titlebox" });
+    titleBox.createDiv({ cls: "typelog-modal-title" }).setText(t("brand.name"));
+    const fileRow = titleBox.createDiv({ cls: "typelog-modal-file" });
+    setIcon(fileRow.createSpan(), "file-text");
+    this.fileEl = fileRow.createSpan();
+
+    // ---- 文字指标 ----
+    const wordsGroup = this.group(contentEl, t("modal.wordsGroup"), "type");
+    const net = this.metric(wordsGroup, "current-net", t("modal.netWords"), "", "", "blue");
+    this.netWordsEl = net.valueEl;
+    this.deltaEl = net.subEl!;
+    const gross = this.metric(wordsGroup, "gross-typed", t("modal.grossTyped"), "", t("modal.grossTypedSub"), "purple");
+    this.grossEl = gross.valueEl;
+    const deleted = this.metric(wordsGroup, "deleted", t("modal.deleted"), "", t("modal.deletedSub"), "red");
+    this.deletedEl = deleted.valueEl;
+
+    // ---- 时间指标 ----
+    const timeGroup = this.group(contentEl, t("modal.timeGroup"), "clock");
+    const sessionActive = this.metric(timeGroup, "session-active", t("modal.sessionActive"), "", "", "green");
+    this.sessionActiveEl = sessionActive.valueEl;
+    this.idleEl = sessionActive.subEl!;
+    const fileActive = this.metric(timeGroup, "file-active", t("modal.fileActive"), "", t("modal.fileActiveSub"), "blue");
+    this.fileActiveEl = fileActive.valueEl;
+    const todayActive = this.metric(timeGroup, "today-active", t("modal.todayActive"), "", t("modal.todayActiveSub"), "orange");
+    this.todayActiveEl = todayActive.valueEl;
+
+    // ---- 速度指标 ----
+    const speedGroup = this.group(contentEl, t("modal.speedGroup"), "zap");
+    const cpm = this.metric(speedGroup, "cpm", t("modal.cpm"), "", "", "blue");
+    this.cpmEl = cpm.valueEl;
+    this.wpmEl = cpm.subEl!;
+    const peak = this.metric(speedGroup, "peak", t("modal.peak"), "", t("modal.peakSub"), "orange");
+    this.peakEl = peak.valueEl;
+    const todayGross = this.metric(speedGroup, "today-gross", t("modal.todayGross"), "", "", "purple");
+    this.todayGrossEl = todayGross.valueEl;
+    this.lifetimeEl = todayGross.subEl!;
+
+    // ---- 今日目标进度 ----
+    const goals = contentEl.createDiv({ cls: "typelog-modal-goals" });
+    const wordGoal = this.goalItem(goals, 0, t("modal.wordGoalRing"), t("modal.wordGoalLabel"), "");
+    this.wordRing = wordGoal.ring;
+    this.wordRingSubEl = wordGoal.subEl;
+    const timeGoal = this.goalItem(goals, 0, t("modal.timeGoalRing"), t("modal.timeGoalLabel"), "");
+    this.timeRing = timeGoal.ring;
+    this.timeRingSubEl = timeGoal.subEl;
+  }
+
+  // 每秒增量更新：只 setText 数值节点 + 更新进度环属性
+  private updateValues() {
     const engine = this.plugin.engine;
     const session = this.plugin.session.get();
     const path = engine?.getCurrentPath() ?? null;
@@ -144,58 +219,33 @@ export class StatusBarDetailModal extends Modal {
     const todayKey = dateKey(new Date());
     const settings = this.plugin.settings;
 
-    // ---- 头部横幅 ----
-    const header = contentEl.createDiv({ cls: "typelog-modal-header" });
-    const logo = header.createDiv({ cls: "typelog-modal-logo" });
-    setIcon(logo, "bar-chart-2");
-    const titleBox = header.createDiv({ cls: "typelog-modal-titlebox" });
-    titleBox.createDiv({ cls: "typelog-modal-title" }).setText("TypeLog 字迹");
-    const fileRow = titleBox.createDiv({ cls: "typelog-modal-file" });
-    setIcon(fileRow.createSpan(), "file-text");
-    fileRow.createSpan().setText(path ? path.split("/").pop() ?? path : "未打开文件");
+    this.fileEl.setText(path ? path.split("/").pop() ?? path : t("modal.noFile"));
 
-    // ---- 文字指标 ----
-    const wordsGroup = this.group(contentEl, "文字指标", "type");
-    this.metric(wordsGroup, "current-net", "当前净字数", session ? formatNumber(session.netStartWords + session.deltaWords) : "—",
-      session ? `${session.deltaWords >= 0 ? "+" : ""}${formatNumber(session.deltaWords)} 本次会话` : "", "blue");
-    this.metric(wordsGroup, "gross-typed", "文件累计字数", fileStats ? formatNumber(fileStats.grossTyped) : "—",
-      "累计键入（含删除/替换，永不回退）", "purple");
-    this.metric(wordsGroup, "deleted", "删除/废弃字符", fileStats ? formatNumber(fileStats.deletedChars) : "—",
-      "思维反复参考指标", "red");
+    this.netWordsEl.setText(session ? formatNumber(session.netStartWords + session.deltaWords) : "—");
+    this.deltaEl.setText(session ? t("modal.thisSession", { n: `${session.deltaWords >= 0 ? "+" : ""}${formatNumber(session.deltaWords)}` }) : "");
+    this.grossEl.setText(fileStats ? formatNumber(fileStats.grossTyped) : "—");
+    this.deletedEl.setText(fileStats ? formatNumber(fileStats.deletedChars) : "—");
 
-    // ---- 时间指标 ----
-    const timeGroup = this.group(contentEl, "时间指标", "clock");
     const spanMs = session ? Date.now() - session.openedAt : 0;
-    this.metric(timeGroup, "session-active", "会话活跃时长", session ? formatDuration(session.activeTimeMs) : "—",
-      session ? `闲置 ${formatDuration(Math.max(0, spanMs - session.activeTimeMs))}` : "", "green");
-    this.metric(timeGroup, "file-active", "文件累计活跃", fileStats ? formatDuration(fileStats.activeTimeMs) : "—",
-      "历史累计编辑时长", "blue");
-    this.metric(timeGroup, "today-active", "今日编辑时长", formatDuration(globalStats.dailyActiveByDate[todayKey] ?? 0), "全天活跃累计", "orange");
+    this.sessionActiveEl.setText(session ? formatDuration(session.activeTimeMs) : "—");
+    this.idleEl.setText(session ? t("modal.idle", { d: formatDuration(Math.max(0, spanMs - session.activeTimeMs)) }) : "");
+    this.fileActiveEl.setText(fileStats ? formatDuration(fileStats.activeTimeMs) : "—");
+    this.todayActiveEl.setText(formatDuration(globalStats.dailyActiveByDate[todayKey] ?? 0));
 
-    // ---- 速度指标 ----
-    const speedGroup = this.group(contentEl, "速度指标", "zap");
-    this.metric(speedGroup, "cpm", "当前打字速度", session ? `${formatNumber(engine?.getCpm() ?? 0)} 字/分` : "—",
-      session ? `WPM ${Math.round(engine?.getWpm() ?? 0)}（60秒滑动窗口）` : "", "blue");
-    this.metric(speedGroup, "peak", "会话峰值速度", session ? `${formatNumber(session.peakSpeed)} 字/分` : "—",
-      "10 秒窗口最高瞬时速度", "orange");
-    this.metric(speedGroup, "today-gross", "今日总输入", formatNumber(globalStats.dailyGrossByDate[todayKey] ?? 0),
-      `终身累计 ${formatNumber(globalStats.grossTypedTotal)}`, "purple");
+    this.cpmEl.setText(session ? t("sb.speed", { n: formatNumber(engine?.getCpm() ?? 0) }) : "—");
+    this.wpmEl.setText(session ? `WPM ${Math.round(engine?.getWpm() ?? 0)}${t("modal.wpmSub")}` : "");
+    this.peakEl.setText(session ? t("sb.speed", { n: formatNumber(session.peakSpeed) }) : "—");
+    this.todayGrossEl.setText(formatNumber(globalStats.dailyGrossByDate[todayKey] ?? 0));
+    this.lifetimeEl.setText(t("modal.lifetime", { n: formatNumber(globalStats.grossTypedTotal) }));
 
-    // ---- 今日目标进度 ----
     const todayWords = globalStats.dailyGrossByDate[todayKey] ?? 0;
     const todayMs = globalStats.dailyActiveByDate[todayKey] ?? 0;
-    const goals = contentEl.createDiv({ cls: "typelog-modal-goals" });
-    const goalItem = (ratio: number, ringLabel: string, label: string, sub: string) => {
-      const g = goals.createDiv({ cls: "typelog-modal-goal" });
-      renderRingProgress(g.createDiv({ cls: "typelog-modal-goal-ring" }), ratio, ringLabel, 64);
-      const t = g.createDiv({ cls: "typelog-modal-goal-text" });
-      t.createDiv({ cls: "typelog-modal-goal-label" }).setText(label);
-      t.createDiv({ cls: "typelog-modal-goal-sub" }).setText(sub);
-    };
     const wordRatio = settings.dailyWordGoal > 0 ? todayWords / settings.dailyWordGoal : 0;
     const timeRatio = settings.dailyTimeGoalMin > 0 ? todayMs / (settings.dailyTimeGoalMin * 60_000) : 0;
-    goalItem(wordRatio, "字数", "今日字数目标", `${formatNumber(todayWords)} / ${formatNumber(settings.dailyWordGoal)}`);
-    goalItem(timeRatio, "时长", "今日时长目标", `${formatDuration(todayMs)} / ${settings.dailyTimeGoalMin}分钟`);
+    this.wordRing.setProgress(wordRatio);
+    this.wordRingSubEl.setText(`${formatNumber(todayWords)} / ${formatNumber(settings.dailyWordGoal)}`);
+    this.timeRing.setProgress(timeRatio);
+    this.timeRingSubEl.setText(`${formatDuration(todayMs)} / ${t("modal.minutesUnit", { n: settings.dailyTimeGoalMin })}`);
   }
 
   private group(container: HTMLElement, title: string, icon: string) {
@@ -206,14 +256,30 @@ export class StatusBarDetailModal extends Modal {
     return g.createDiv({ cls: "typelog-modal-group-grid" });
   }
 
-  private metric(parent: HTMLElement, icon: string, label: string, value: string, sub?: string, accent?: string) {
+  private metric(parent: HTMLElement, icon: string, label: string, value: string, sub?: string, accent?: string): { valueEl: HTMLElement; subEl?: HTMLElement } {
     const card = parent.createDiv({ cls: `typelog-modal-metric accent-${accent ?? "blue"}` });
     const iconWrap = card.createDiv({ cls: "typelog-modal-metric-icon" });
     setIcon(iconWrap, icon);
     const body = card.createDiv({ cls: "typelog-modal-metric-body" });
     body.createDiv({ cls: "typelog-modal-metric-label" }).setText(label);
-    body.createDiv({ cls: "typelog-modal-metric-value" }).setText(value);
-    if (sub) body.createDiv({ cls: "typelog-modal-metric-sub" }).setText(sub);
+    const valueEl = body.createDiv({ cls: "typelog-modal-metric-value" });
+    valueEl.setText(value);
+    let subEl: HTMLElement | undefined;
+    if (sub !== undefined) {
+      subEl = body.createDiv({ cls: "typelog-modal-metric-sub" });
+      subEl.setText(sub);
+    }
+    return { valueEl, subEl };
+  }
+
+  private goalItem(goals: HTMLElement, ratio: number, ringLabel: string, label: string, sub: string): { ring: RingProgressHandle; subEl: HTMLElement } {
+    const g = goals.createDiv({ cls: "typelog-modal-goal" });
+    const ring = renderRingProgress(g.createDiv({ cls: "typelog-modal-goal-ring" }), ratio, ringLabel, 64);
+    const t = g.createDiv({ cls: "typelog-modal-goal-text" });
+    t.createDiv({ cls: "typelog-modal-goal-label" }).setText(label);
+    const subEl = t.createDiv({ cls: "typelog-modal-goal-sub" });
+    subEl.setText(sub);
+    return { ring, subEl };
   }
 
   onClose() {
