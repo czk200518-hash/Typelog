@@ -1,6 +1,6 @@
 {
   "name": "obsidian-typelog",
-  "version": "1.0.6",
+  "version": "1.0.65",
   "description": "Typing statistics: net vs total input, active time, speed, heatmap, goals.",
   "main": "main.js",
   "scripts": {
