@@ -12,6 +12,9 @@ export interface MinuteSample {
   gross: number;
 }
 
+// 分钟采样保留上限（24 小时），防止超长会话内存无界增长
+const MAX_MINUTE_SAMPLES = 1440;
+
 export class SessionStatsStore {
   private current: SessionStats | null = null;
 
@@ -30,10 +33,12 @@ export class SessionStatsStore {
     };
   }
 
-  // 追加分钟级采样
+  // 追加分钟级采样（超上限时淘汰最旧，内存有界）
   pushMinuteSample(t: number) {
     if (this.current) {
-      this.current.minuteSeries.push({ t, delta: this.current.deltaWords, gross: this.current.grossTyped });
+      const series = this.current.minuteSeries;
+      if (series.length >= MAX_MINUTE_SAMPLES) series.shift();
+      series.push({ t, delta: this.current.deltaWords, gross: this.current.grossTyped });
     }
   }
 
