@@ -1,8 +1,9 @@
 // TypeLog 设置页
 import { App, PluginSettingTab, Setting, setIcon, type SettingDefinitionItem, type SliderComponent, type TextComponent } from "obsidian";
 import type TypeLogPlugin from "../main";
-import { CountMode, PomodoroMode } from "../core/settings";
+import { CountMode, PomodoroMode, UiLang } from "../core/settings";
 import { formatMinutesSeconds, parseMinutesSeconds } from "../core/format";
+import { t } from "../core/i18n";
 import { ExportStatsModal } from "./exportModal";
 
 export class TypeLogSettingTab extends PluginSettingTab {
@@ -25,26 +26,38 @@ export class TypeLogSettingTab extends PluginSettingTab {
     const logo = head.createDiv({ cls: "typelog-settings-about-logo" });
     setIcon(logo, "bar-chart-2");
     const titles = head.createDiv({ cls: "typelog-settings-about-titles" });
-    titles.createDiv({ text: "TypeLog 字迹", cls: "typelog-settings-about-name" });
-    titles.createDiv({ cls: "typelog-settings-about-version" }).setText("v1.0.6");
+    titles.createDiv({ text: t("brand.name"), cls: "typelog-settings-about-name" });
+    titles.createDiv({ cls: "typelog-settings-about-version" }).setText(`v${this.plugin.manifest.version}`);
 
     const tips = about.createDiv({ cls: "typelog-settings-tips" });
     tips.createDiv({ cls: "typelog-settings-tips-title" }).setText("tips");
-    const tip = (t: string) => {
+    const tip = (tText: string) => {
       const row = tips.createDiv({ cls: "typelog-settings-tip" });
 //      setIcon(row.createSpan(), "arrow-right");
-      row.createSpan().setText(t);
+      row.createSpan().setText(tText);
     };
-    tip("点击左侧功能区图表图标，或命令面板执行「TypeLog: 打开统计窗口」");
-    tip("点击状态栏任信息，查看当前文件详细统计情况");
-    tip("统计数据存储在 vault 的 .typelog 目录与系统用户目录");
+    tip(t("st.tip1"));
+    tip(t("st.tip2"));
+    tip(t("st.tip3"));
+
+    // ---- 语言 ----
+    new Setting(containerEl)
+      .setName(t("st.language"))
+      .setDesc(t("st.languageDesc"))
+      .addDropdown((dd) =>
+        dd
+          .addOption("zh", t("st.langZh"))
+          .addOption("en", t("st.langEn"))
+          .setValue(this.plugin.settings.language)
+          .onChange((v) => void this.plugin.setLanguage(v as UiLang)),
+      );
 
     // ---- 显示设置 ----
-    new Setting(containerEl).setName("显示设置").setHeading();
+    new Setting(containerEl).setName(t("st.displayHeading")).setHeading();
 
     new Setting(containerEl)
-      .setName("状态栏显示统计")
-      .setDesc("在左下角状态栏显示实时统计（当前速度 | 净字数 | 今日总输入）")
+      .setName(t("st.showStatusBar"))
+      .setDesc(t("st.showStatusBarDesc"))
       .addToggle((tg) =>
         tg.setValue(this.plugin.settings.showStatusBar).onChange(async (v) => {
           this.plugin.settings.showStatusBar = v;
@@ -79,16 +92,16 @@ export class TypeLogSettingTab extends PluginSettingTab {
     //   );
 
     // 统计设置
-    new Setting(containerEl).setName("统计设置").setHeading();
+    new Setting(containerEl).setName(t("st.statsHeading")).setHeading();
 
     // 计数
     new Setting(containerEl)
-      .setName("字数计数模式")
-      .setDesc("严格：仅统计汉字与英文单词；宽松：统计所有可见字符（含符号）")
+      .setName(t("st.countMode"))
+      .setDesc(t("st.countModeDesc"))
       .addDropdown((dd) =>
         dd
-          .addOption("strict", "严格模式")
-          .addOption("loose", "宽松模式")
+          .addOption("strict", t("st.countStrict"))
+          .addOption("loose", t("st.countLoose"))
           .setValue(this.plugin.settings.countMode)
           .onChange(async (v) => {
             this.plugin.settings.countMode = v as CountMode;
@@ -97,8 +110,8 @@ export class TypeLogSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("粘贴计入打字速度")
-      .setDesc("开启后，粘贴/拖拽导入的大段文本将计入当前打字速度（建议关闭，避免速度虚高）")
+      .setName(t("st.includePaste"))
+      .setDesc(t("st.includePasteDesc"))
       .addToggle((tg) =>
         tg.setValue(this.plugin.settings.includePasteInSpeed).onChange(async (v) => {
           this.plugin.settings.includePasteInSpeed = v;
@@ -110,8 +123,8 @@ export class TypeLogSettingTab extends PluginSettingTab {
     let idleSlider: SliderComponent | undefined;
     let idleText: TextComponent | undefined;
     new Setting(containerEl)
-      .setName("闲置判定时间（秒）")
-      .setDesc("连续无编辑操作超过该时间，停止活跃计时，范围 1-120秒")
+      .setName(t("st.idleThreshold"))
+      .setDesc(t("st.idleThresholdDesc"))
       .setClass("typelog-idle-threshold-setting")
       .addSlider((sl) => {
         idleSlider = sl;
@@ -131,7 +144,7 @@ export class TypeLogSettingTab extends PluginSettingTab {
         text.inputEl.addClass("typelog-idle-threshold");
         text
           .setValue(String(this.plugin.settings.idleThresholdSec))
-          .setPlaceholder("秒")
+          .setPlaceholder("s")
           .onChange(async (v) => {
             const n = parseInt(v, 10);
             if (!isNaN(n) && n >= 1 && n <= 120) {
@@ -145,8 +158,8 @@ export class TypeLogSettingTab extends PluginSettingTab {
 
     // ---- 排除规则 ----
     new Setting(containerEl)
-      .setName("排除文件/文件夹")
-      .setDesc("支持 .ignore 语法：* ? ** 通配符，! 反向排除，每行一条（如 node_modules、*.min.js）")
+      .setName(t("st.exclude"))
+      .setDesc(t("st.excludeDesc"))
       .addTextArea((text) => {
         text.inputEl.addClass("typelog-settings-exclude");
         text.setValue(this.plugin.settings.excludePatterns.join("\n"));
@@ -155,14 +168,15 @@ export class TypeLogSettingTab extends PluginSettingTab {
             .split("\n")
             .map((s) => s.trim())
             .filter((s) => s);
+          this.plugin.refreshExcludePatterns();
           await this.plugin.saveSettings();
         });
       });
 
     // ---- 每日目标 ----
     new Setting(containerEl)
-      .setName("今日目标字数")
-      .setDesc("面板中以环形进度条显示（0 表示不启用）")
+      .setName(t("st.dailyWordGoal"))
+      .setDesc(t("st.dailyWordGoalDesc"))
       .addText((text) =>
         text.setValue(String(this.plugin.settings.dailyWordGoal)).onChange(async (v) => {
           const n = parseInt(v, 10);
@@ -174,8 +188,8 @@ export class TypeLogSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("今日目标时长（分钟）")
-      .setDesc("0 表示不启用")
+      .setName(t("st.dailyTimeGoal"))
+      .setDesc(t("st.dailyTimeGoalDesc"))
       .addText((text) =>
         text.setValue(String(this.plugin.settings.dailyTimeGoalMin)).onChange(async (v) => {
           const n = parseInt(v, 10);
@@ -188,8 +202,8 @@ export class TypeLogSettingTab extends PluginSettingTab {
 
     // ---- 番茄钟 ----
     new Setting(containerEl)
-      .setName("番茄钟提醒")
-      .setDesc("手动启动，连续活跃编辑达到设定时长即发出提醒\n状态栏点击或命令“开始/停止番茄钟”触发")
+      .setName(t("st.pomodoroEnabled"))
+      .setDesc(t("st.pomodoroEnabledDesc"))
       .setClass("typelog-desc-preline")
       .addToggle((tg) =>
         tg.setValue(this.plugin.settings.pomodoroEnabled).onChange(async (v) => {
@@ -200,8 +214,8 @@ export class TypeLogSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("番茄钟时长")
-      .setDesc("默认25分钟；输入格式：xx分xx秒，或直接输入分钟数；修改时长会重置当前番茄钟")
+      .setName(t("st.pomodoroMinutes"))
+      .setDesc(t("st.pomodoroMinutesDesc"))
       .addText((text) =>
         text.setValue(formatMinutesSeconds(this.plugin.settings.pomodoroMinutes)).onChange(async (v) => {
           const n = parseMinutesSeconds(v);
@@ -213,13 +227,13 @@ export class TypeLogSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("番茄钟计时方式")
-      .setDesc("纯计时：启动后按真实时间计时，不依赖是否打字；\n活跃计时：仅在连续编辑活跃时计时，中途停顿超过闲置阈值则重新累计。")
+      .setName(t("st.pomodoroMode"))
+      .setDesc(t("st.pomodoroModeDesc"))
       .setClass("typelog-desc-preline")
       .addDropdown((dd) =>
         dd
-          .addOption("real", "纯计时")
-          .addOption("active", "活跃计时")
+          .addOption("real", t("st.pomoModeReal"))
+          .addOption("active", t("st.pomoModeActive"))
           .setValue(this.plugin.settings.pomodoroMode)
           .onChange(async (v) => {
             this.plugin.settings.pomodoroMode = v as PomodoroMode;
@@ -228,17 +242,17 @@ export class TypeLogSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("番茄钟控制")
-      .setDesc("由你决定何时开始计时")
+      .setName(t("st.pomodoroControl"))
+      .setDesc(t("st.pomodoroControlDesc"))
       .addButton((b) => {
         const updateText = () => {
           const e = this.plugin.engine;
           if (e.isPomodoroPaused()) {
-            b.setButtonText("继续番茄钟");
+            b.setButtonText(t("st.pomoResume"));
           } else if (e.isPomodoroRunning()) {
-            b.setButtonText("停止番茄钟");
+            b.setButtonText(t("st.pomoStop"));
           } else {
-            b.setButtonText("开始番茄钟");
+            b.setButtonText(t("st.pomoStart"));
           }
         };
         updateText();
@@ -251,26 +265,67 @@ export class TypeLogSettingTab extends PluginSettingTab {
 
     // ---- 数据管理 ----
     new Setting(containerEl)
-      .setName("导出统计报表")
-      .setDesc("可自定义导出格式、vault 内导出目录与文件名")
+      .setName(t("st.export"))
+      .setDesc(t("st.exportDesc"))
       .addButton((b) =>
-        b.setButtonText("导出报表").setCta().onClick(() => new ExportStatsModal(this.app, this.plugin).open()),
+        b.setButtonText(t("st.exportBtn")).setCta().onClick(() => new ExportStatsModal(this.app, this.plugin).open()),
+      );
+
+    // ---- 数据老化清理 ----
+    new Setting(containerEl)
+      .setName(t("st.purgeHeading"))
+      .setHeading()
+      .setDesc(t("st.purgeHeadingDesc"));
+
+    new Setting(containerEl)
+      .setName(t("st.purgeInactive"))
+      .setDesc(t("st.purgeInactiveDesc"))
+      .addText((text) =>
+        text.setValue(String(this.plugin.settings.purgeInactiveDays)).onChange(async (v) => {
+          const n = parseInt(v, 10);
+          if (!isNaN(n) && n >= 0) {
+            this.plugin.settings.purgeInactiveDays = n;
+            await this.plugin.saveSettings();
+          }
+        }),
       );
 
     new Setting(containerEl)
-      .setName("重置当前文件会话统计")
-      .setDesc("仅重置本次打开会话的统计，不影响历史累计数据（需两步确认）")
+      .setName(t("st.purgeDaily"))
+      .setDesc(t("st.purgeDailyDesc"))
+      .addText((text) =>
+        text.setValue(String(this.plugin.settings.dailyRetentionDays)).onChange(async (v) => {
+          const n = parseInt(v, 10);
+          if (!isNaN(n) && n >= 0) {
+            this.plugin.settings.dailyRetentionDays = n;
+            await this.plugin.saveSettings();
+          }
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName(t("st.purgeNow"))
+      .setDesc(t("st.purgeNowDesc"))
       .addButton((b) => {
-        b.setButtonText("重置会话");
+        b.setButtonText(t("st.purgeBtn"));
+        b.buttonEl.addClass("typelog-btn-danger");
+        b.onClick(() => this.plugin.confirmPurgeData());
+      });
+
+    new Setting(containerEl)
+      .setName(t("st.resetSession"))
+      .setDesc(t("st.resetSessionDesc"))
+      .addButton((b) => {
+        b.setButtonText(t("st.resetSessionBtn"));
         b.buttonEl.addClass("typelog-btn-danger");
         b.onClick(() => this.plugin.confirmResetSession());
       });
 
     new Setting(containerEl)
-      .setName("硬重置（清除所有历史）")
-      .setDesc("删除全部文件层/工程层/全局层统计历史，此操作不可撤销（需两步确认）")
+      .setName(t("st.hardReset"))
+      .setDesc(t("st.hardResetDesc"))
       .addButton((b) => {
-        b.setButtonText("清除所有历史");
+        b.setButtonText(t("st.hardResetBtn"));
         b.buttonEl.addClass("typelog-btn-danger");
         b.onClick(() => this.plugin.confirmHardReset());
       });
