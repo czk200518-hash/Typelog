@@ -21,6 +21,7 @@ function createEngine(pomodoroMinutes = 1, idleThresholdSec = 5) {
   const onPomodoroDue = vi.fn();
   const onUiUpdate = vi.fn();
   const settings: TypeLogSettings = {
+    language: "zh",
     countMode: "strict",
     includePasteInSpeed: false,
     idleThresholdSec,
@@ -33,6 +34,8 @@ function createEngine(pomodoroMinutes = 1, idleThresholdSec = 5) {
     showStatusBar: true,
     windowMode: "sidebar",
     popoutAlwaysOnTop: true,
+    purgeInactiveDays: 0,
+    dailyRetentionDays: 0,
   };
   const deps: StatsEngineDeps = {
     workspace: {} as never,
