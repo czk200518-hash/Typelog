@@ -1,6 +1,7 @@
 // 自适应存储：系统绝对路径走 Node fs，vault 相对路径走 Vault.adapter
 import { Vault } from "obsidian";
 import type { StatsStorageAdapter } from "../core/statsStore";
+import { t } from "../core/i18n";
 
 // 显式声明用到的 Node 模块接口，避免依赖 @types/node 的类型解析（评审 lint 会将其视为 any）
 interface FsPromisesApi {
@@ -84,7 +85,7 @@ export class AdaptiveStorageAdapter implements StatsStorageAdapter {
         await fs.promises.rename(tmp, path);
         return;
       }
-      throw new Error("系统路径写入不可用");
+      throw new Error(t("err.systemWriteUnavailable"));
     }
     // DataAdapter.write 不会自动建父目录，必须手动建，否则写盘静默失败
     const norm = path.replace(/\\/g, "/");
