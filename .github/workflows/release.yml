@@ -1,4 +1,4 @@
-# 发布工作流：tag 推送时在 CI 中构建插件并发布，同时生成构建来源证明（artifact attestations）
+﻿# 发布工作流：tag 推送时在 CI 中构建插件并发布，同时生成构建来源证明（artifact attestations）
 # 构建产物直接来自源码，确保与评审系统重新构建的结果一致。
 name: Release plugin
 
