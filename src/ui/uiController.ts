@@ -3,7 +3,8 @@ import type TypeLogPlugin from "../main";
 import { StatusBarController } from "./statusBar";
 import { DashboardView, VIEW_TYPE_TYPELOG } from "./dashboardView";
 import { TypeLogSettingTab } from "./settingsTab";
-import { Notice, Platform } from "obsidian";
+import { Notice } from "obsidian";
+import { t } from "../core/i18n";
 
 export class UiController {
   private statusBar: StatusBarController;
@@ -15,7 +16,9 @@ export class UiController {
   // 注册视图与设置页，按设置应用显示方式
   init() {
     this.plugin.registerView(VIEW_TYPE_TYPELOG, (leaf) => new DashboardView(leaf, this.plugin));
-    this.plugin.addSettingTab(new TypeLogSettingTab(this.plugin.app, this.plugin));
+    // 保存设置页引用，语言切换时重新渲染
+    this.plugin.settingTab = new TypeLogSettingTab(this.plugin.app, this.plugin);
+    this.plugin.addSettingTab(this.plugin.settingTab);
     this.applyDisplayModes();
   }
 
@@ -26,6 +29,19 @@ export class UiController {
       this.statusBar.build();
     } else {
       this.statusBar.destroy();
+    }
+  }
+
+  // 语言切换后立即生效：重建状态栏、统计面板，使文本按新语言显示
+  applyLanguage() {
+    // build() 有防重入保护，语言切换需先销毁再重建以更新文本
+    if (this.plugin.settings.showStatusBar) {
+      this.statusBar.destroy();
+      this.statusBar.build();
+    }
+    const leaves = this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_TYPELOG);
+    for (const leaf of leaves) {
+      (leaf.view as DashboardView).applyLanguage();
     }
   }
 
@@ -46,7 +62,7 @@ export class UiController {
     } else if (mode === "sidebar") {
       this.openDashboard();
     } else {
-      new Notice("TypeLog：当前未启用统计窗口，可在设置中开启（侧边栏面板）");
+      new Notice(t("notice.windowDisabled"));
     }
   }
 
@@ -61,44 +77,6 @@ export class UiController {
     if (leaf) {
       void leaf.setViewState({ type: VIEW_TYPE_TYPELOG, active: true });
     }
-  }
-
-  // 悬浮窗（桌面端专用，移动端降级侧边栏）；仅今日三数据 + 小窗口 + 置顶
-  openFloating() {
-    if (Platform.isDesktopApp) {
-      try {
-        const leaf = this.plugin.app.workspace.openPopoutLeaf({
-          size: { width: 120, height: 160 },
-        });
-        if (leaf) {
-          void (async () => {
-            await leaf.setViewState({ type: VIEW_TYPE_TYPELOG, active: true });
-            const view = leaf.view;
-            if (view instanceof DashboardView) {
-              view.setCompact(true);
-              view.setPopout(true);
-              // 渲染完成后按内容高度调整窗口尺寸
-              window.setTimeout(() => {
-                try {
-                  const win = view.getOwnWindow();
-                  if (win) {
-                    const h = Math.min(260, view.contentEl.scrollHeight + 36);
-                    win.resizeTo(120, h);
-                  }
-                } catch {
-                  // 窗口已关闭等场景忽略
-                }
-              }, 300);
-            }
-            this.plugin.app.workspace.setActiveLeaf(leaf, { focus: true });
-          })();
-          return;
-        }
-      } catch (e) {
-        console.error("[TypeLog] 打开悬浮窗失败：", e);
-      }
-    }
-    this.openDashboard();
   }
 
   destroy() {
