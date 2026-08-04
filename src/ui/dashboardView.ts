@@ -1,9 +1,20 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import type TypeLogPlugin from "../main";
 import { dateKey, formatDuration, formatNumber, pad2 } from "../core/format";
-import { renderLineChart, renderHeatmap, renderRingProgress } from "./svg";
+import { renderLineChart, renderHeatmap, renderRingProgress, type RingProgressHandle } from "./svg";
+import { t } from "../core/i18n";
 
 export const VIEW_TYPE_TYPELOG = "typelog-dashboard";
+
+// 热力图格颜色（与 svg.ts renderHeatmap 内部分级一致，供增量更新今日格 fill）
+function heatColor(minutes: number): string {
+  if (minutes <= 0) return "var(--background-modifier-border)";
+  if (minutes < 5) return "#d7f0e0";
+  if (minutes < 15) return "#a6e2ba";
+  if (minutes < 30) return "#5cc786";
+  if (minutes < 45) return "#2ea85f";
+  return "#1d8a49";
+}
 
 export class DashboardView extends ItemView {
   private root!: HTMLElement;
@@ -16,6 +27,33 @@ export class DashboardView extends ItemView {
   private isPopout = false;
   // 是否正在编辑番茄钟时间输入框（编辑期间跳过自动重绘，避免失焦）
   private timeEditing = false;
+  // ---- 增量渲染缓存：结构只构建一次，秒级刷新仅 setText/setAttribute ----
+  // 结构是否已构建（首次/跨天/跨月/尺寸变化/模式切换时为 false，触发全量重建）
+  private structureBuilt = false;
+  private renderTodayKey = "";
+  private renderMonthKey = "";
+  // 今日总览区块
+  private ovActiveEl!: HTMLElement;
+  private ovGrossEl!: HTMLElement;
+  private ovPeakEl!: HTMLElement;
+  private wordRing: RingProgressHandle | null = null;
+  private wordLabelEl!: HTMLElement;
+  private timeRing: RingProgressHandle | null = null;
+  private timeLabelEl!: HTMLElement;
+  // 当前文件区块
+  private fileNetEl!: HTMLElement;
+  private fileGrossEl!: HTMLElement;
+  private fileDeletedEl!: HTMLElement;
+  private fileActiveEl!: HTMLElement;
+  private fileCpmEl!: HTMLElement;
+  // 曲线采样长度（变化时重绘当前文件区块；-1=无会话）
+  private chartLen = -1;
+  // 热力图区块：今日格 rect 引用（同月内仅更新该格 fill）
+  private heatTodayRect: SVGRectElement | null = null;
+  // 番茄钟区块
+  private pomoStateCached = "";
+  private pomoTimeEl: HTMLElement | null = null;
+  private pomoBarFillEl!: HTMLElement;
 
   constructor(leaf: WorkspaceLeaf, private plugin: TypeLogPlugin) {
     super(leaf);
@@ -26,7 +64,7 @@ export class DashboardView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "TypeLog 字迹";
+    return t("brand.name");
   }
 
   getIcon(): string {
@@ -35,6 +73,14 @@ export class DashboardView extends ItemView {
 
   setCompact(v: boolean) {
     this.isCompact = v;
+    // 模式切换：结构与全模式不同，强制下次全量重建
+    this.structureBuilt = false;
+    if (this.root) this.render();
+  }
+
+  // 语言切换：强制全量重建使全部文本按新语言显示
+  applyLanguage() {
+    this.structureBuilt = false;
     if (this.root) this.render();
   }
 
@@ -51,7 +97,11 @@ export class DashboardView extends ItemView {
       if (this.resizeTimer !== null) return;
       this.resizeTimer = window.setTimeout(() => {
         this.resizeTimer = null;
-        if (this.root) this.render();
+        if (this.root) {
+          // 容器尺寸变化：图表宽度需重排，强制全量重建
+          this.structureBuilt = false;
+          this.render();
+        }
       }, 150);
     });
     this.resizeObserver.observe(this.root);
@@ -116,6 +166,8 @@ export class DashboardView extends ItemView {
     this.refresh();
   }
 
+  // 渲染入口：优先走增量更新（结构一次构建 + 数值 setText）；
+  // 首次 / 跨天 / 跨月 / 尺寸变化 / 模式切换 / 编辑态 时回退全量或局部重建
   private render() {
     const el = this.root;
     const compact = this.isCompact;
@@ -128,25 +180,132 @@ export class DashboardView extends ItemView {
       return;
     }
 
-    el.empty();
-    el.toggleClass("typelog-compact", compact);
-
-    const globalStats = this.plugin.store.getGlobalStats();
-    const todayKey = dateKey(new Date());
-
-    // ---- 悬浮窗精简模式：仅今日三数据 ----
+    // ---- 悬浮窗精简模式：仅今日三数据（结构简单，直接重建） ----
     if (compact) {
+      el.empty();
+      el.toggleClass("typelog-compact", true);
+      const globalStats = this.plugin.store.getGlobalStats();
+      const todayKey = dateKey(new Date());
       const compactRow = el.createDiv({ cls: "typelog-overview-row typelog-compact-row" });
-      this.statItem(compactRow, "今日编辑时长", formatDuration(globalStats.dailyActiveByDate[todayKey] ?? 0));
-      this.statItem(compactRow, "今日累计输入", formatNumber(globalStats.dailyGrossByDate[todayKey] ?? 0));
-      this.statItem(compactRow, "今日峰值", `${formatNumber(globalStats.dailyPeakByDate[todayKey] ?? 0)} 字/分`);
+      this.statItem(compactRow, t("dash.todayActive"), formatDuration(globalStats.dailyActiveByDate[todayKey] ?? 0));
+      this.statItem(compactRow, t("dash.todayGross"), formatNumber(globalStats.dailyGrossByDate[todayKey] ?? 0));
+      this.statItem(compactRow, t("dash.todayPeak"), `${formatNumber(globalStats.dailyPeakByDate[todayKey] ?? 0)} ${t("sb.speedUnit")}`);
       return;
     }
 
+    const now = new Date();
+    const todayKey = dateKey(now);
+    const monthKey = `${now.getFullYear()}-${now.getMonth()}`;
+
+    // 首次 / 跨天 / 跨月 / 结构缺失 → 全量重建
+    if (!this.structureBuilt || this.renderTodayKey !== todayKey || this.renderMonthKey !== monthKey) {
+      this.fullRender(now, todayKey, monthKey);
+      return;
+    }
+
+    // 稳态：仅更新变化的数值文本与少量属性
+    this.updateValues(now, todayKey);
+  }
+
+  // 全量重建四个区块并缓存所有可变节点引用
+  private fullRender(now: Date, todayKey: string, monthKey: string) {
+    const el = this.root;
+    this.renderTodayKey = todayKey;
+    this.renderMonthKey = monthKey;
+    el.empty();
+    el.toggleClass("typelog-compact", false);
     this.buildOverviewSection(el);
     this.buildPomodoroSection(el);
     this.buildFileSection(el);
     this.buildHeatmapSection(el);
+    this.structureBuilt = true;
+    // 全量构建已写入初始值，此处同步引用缓存并兜底刷新（幂等）
+    this.updateValues(now, todayKey);
+  }
+
+  // 增量更新：对比引用节点直接 setText / 更新 SVG 属性，零节点重建
+  private updateValues(now: Date, todayKey: string) {
+    const globalStats = this.plugin.store.getGlobalStats();
+    const settings = this.plugin.settings;
+    const todayActive = globalStats.dailyActiveByDate[todayKey] ?? 0;
+    const todayGross = globalStats.dailyGrossByDate[todayKey] ?? 0;
+    const todayPeak = globalStats.dailyPeakByDate[todayKey] ?? 0;
+
+    // 今日总览三指标 + 目标进度环
+    this.setText(this.ovActiveEl, formatDuration(todayActive));
+    this.setText(this.ovGrossEl, formatNumber(todayGross));
+    this.setText(this.ovPeakEl, `${formatNumber(todayPeak)} ${t("sb.speedUnit")}`);
+    const wordRatio = settings.dailyWordGoal > 0 ? todayGross / settings.dailyWordGoal : 0;
+    const timeRatio = settings.dailyTimeGoalMin > 0 ? todayActive / (settings.dailyTimeGoalMin * 60_000) : 0;
+    this.wordRing?.setProgress(wordRatio);
+    this.setText(this.wordLabelEl, `${formatNumber(todayGross)} / ${formatNumber(settings.dailyWordGoal)}`);
+    this.timeRing?.setProgress(timeRatio);
+    this.setText(this.timeLabelEl, `${formatDuration(todayActive)} / ${t("modal.minutesUnit", { n: settings.dailyTimeGoalMin })}`);
+
+    // 当前文件：会话状态变化（无↔有）或曲线采样长度变化时重建该区块，否则仅更新数值
+    const session = this.plugin.session.get();
+    const engine = this.plugin.engine;
+    if (session && engine) {
+      if (this.chartLen === -1) {
+        this.replaceSection(this.root, "typelog-section-file", (p) => this.buildFileSection(p));
+        return;
+      }
+      this.setText(this.fileNetEl, formatNumber(session.netStartWords + session.deltaWords));
+      this.setText(this.fileGrossEl, formatNumber(session.grossTyped));
+      this.setText(this.fileDeletedEl, formatNumber(session.deletedChars));
+      this.setText(this.fileActiveEl, formatDuration(session.activeTimeMs));
+      this.setText(this.fileCpmEl, `${formatNumber(engine.getCpm())} ${t("sb.speedUnit")}`);
+      // 跨分钟新增采样点：长度变化即重绘当前文件区块（频率 1 次/分钟，可接受）
+      const seriesLen = Math.min(session.minuteSeries.length, 120);
+      if (seriesLen !== this.chartLen) {
+        this.replaceSection(this.root, "typelog-section-file", (p) => this.buildFileSection(p));
+        return;
+      }
+    } else if (this.chartLen !== -1) {
+      // 会话结束（切走文件）：重建为提示态
+      this.replaceSection(this.root, "typelog-section-file", (p) => this.buildFileSection(p));
+      return;
+    }
+
+    // 热力图：同月内仅更新今日格 fill
+    this.updateHeatmapToday(globalStats);
+
+    // 番茄钟：状态切换时重建，运行中仅更新倒计时与进度条
+    this.updatePomodoro();
+  }
+
+  // 热力图今日格增量更新（仅改该格 fill，不重建 SVG）
+  private updateHeatmapToday(globalStats: ReturnType<TypeLogPlugin["store"]["getGlobalStats"]>) {
+    if (!this.heatTodayRect) return;
+    const key = dateKey(new Date());
+    const hours = globalStats.heatmap[key];
+    const minutes = hours ? Math.round(hours.reduce((a, b) => a + (b || 0), 0) / 60_000) : 0;
+    this.heatTodayRect.setAttribute("fill", heatColor(minutes));
+  }
+
+  // 番茄钟增量更新：状态切换重建区块；running 态更新倒计时文本与进度条
+  private updatePomodoro() {
+    const engine = this.plugin.engine;
+    const settings = this.plugin.settings;
+    if (!settings.pomodoroEnabled) return;
+    const state = engine.isPomodoroPaused() ? "paused" : engine.isPomodoroRunning() ? "running" : "idle";
+    if (state !== this.pomoStateCached) {
+      this.replaceSection(this.root, "typelog-section-pomo", (p) => this.buildPomodoroSection(p));
+      return;
+    }
+    if (state === "running" && this.pomoTimeEl) {
+      const remain = engine.getPomodoroRemainingMs();
+      const totalSec = Math.max(0, Math.ceil(remain / 1000));
+      this.pomoTimeEl.setText(`${Math.floor(totalSec / 60)}:${pad2(totalSec % 60)}`);
+      const total = settings.pomodoroMinutes * 60_000;
+      const ratio = total > 0 ? Math.min(1, Math.max(0, 1 - remain / total)) : 0;
+      this.pomoBarFillEl?.setCssProps({ width: `${(ratio * 100).toFixed(1)}%` });
+    }
+  }
+
+  // 引用节点安全 setText（避免对可能未构建的节点调用）
+  private setText(el: HTMLElement | null | undefined, text: string) {
+    if (el) el.setText(text);
   }
 
   // 原地替换某个统计区块：新节点先追加到末尾，再移动到旧节点位置，保持“今日总览→番茄钟→当前文件→热力图”顺序
@@ -159,26 +318,29 @@ export class DashboardView extends ItemView {
     }
   }
 
-  private statItem(row: HTMLElement, label: string, value: string) {
+  // 创建指标项并返回数值节点（供增量更新 setText）
+  private statItem(row: HTMLElement, label: string, value: string): HTMLElement {
     const d = row.createDiv({ cls: "typelog-overview-item" });
-    d.createDiv({ cls: "typelog-overview-value" }).setText(value);
+    const v = d.createDiv({ cls: "typelog-overview-value" });
+    v.setText(value);
     d.createDiv({ cls: "typelog-overview-label" }).setText(label);
+    return v;
   }
 
   // ---- 今日总览 ----
   private buildOverviewSection(parent: HTMLElement): HTMLElement {
     const globalStats = this.plugin.store.getGlobalStats();
     const settings = this.plugin.settings;
-    const todayKey = dateKey(new Date());
+    const todayKey = this.renderTodayKey || dateKey(new Date());
     const section = parent.createDiv({ cls: "typelog-section typelog-section-ov" });
-    section.createEl("h3", { text: "今日总览", cls: "typelog-section-title" });
+    section.createEl("h3", { text: t("dash.todayOverview"), cls: "typelog-section-title" });
 
     const statsRow = section.createDiv({ cls: "typelog-overview-row" });
-    this.statItem(statsRow, "今日编辑时长", formatDuration(globalStats.dailyActiveByDate[todayKey] ?? 0));
-    this.statItem(statsRow, "今日累计输入", formatNumber(globalStats.dailyGrossByDate[todayKey] ?? 0));
-    this.statItem(statsRow, "今日峰值", `${formatNumber(globalStats.dailyPeakByDate[todayKey] ?? 0)} 字/分`);
+    this.ovActiveEl = this.statItem(statsRow, t("dash.todayActive"), formatDuration(globalStats.dailyActiveByDate[todayKey] ?? 0));
+    this.ovGrossEl = this.statItem(statsRow, t("dash.todayGross"), formatNumber(globalStats.dailyGrossByDate[todayKey] ?? 0));
+    this.ovPeakEl = this.statItem(statsRow, t("dash.todayPeak"), `${formatNumber(globalStats.dailyPeakByDate[todayKey] ?? 0)} ${t("sb.speedUnit")}`);
 
-    // 每日目标进度环
+    // 每日目标进度环（句柄缓存供增量更新环比例）
     const goals = section.createDiv({ cls: "typelog-goals" });
     const todayWords = globalStats.dailyGrossByDate[todayKey] ?? 0;
     const todayMs = globalStats.dailyActiveByDate[todayKey] ?? 0;
@@ -186,11 +348,17 @@ export class DashboardView extends ItemView {
     const timeRatio = settings.dailyTimeGoalMin > 0 ? todayMs / (settings.dailyTimeGoalMin * 60_000) : 0;
     const goalItem = (ratio: number, ringLabel: string, text: string) => {
       const g = goals.createDiv({ cls: "typelog-goal-item" });
-      renderRingProgress(g.createDiv({ cls: "typelog-goal-ring" }), ratio, ringLabel);
-      g.createDiv({ cls: "typelog-goal-label" }).setText(text);
+      const handle = renderRingProgress(g.createDiv({ cls: "typelog-goal-ring" }), ratio, ringLabel);
+      const label = g.createDiv({ cls: "typelog-goal-label" });
+      label.setText(text);
+      return { handle, label };
     };
-    goalItem(wordRatio, "字数目标", `${formatNumber(todayWords)} / ${formatNumber(settings.dailyWordGoal)}`);
-    goalItem(timeRatio, "时长目标", `${formatDuration(todayMs)} / ${settings.dailyTimeGoalMin}分钟`);
+    const word = goalItem(wordRatio, t("dash.wordGoal"), `${formatNumber(todayWords)} / ${formatNumber(settings.dailyWordGoal)}`);
+    this.wordRing = word.handle;
+    this.wordLabelEl = word.label;
+    const time = goalItem(timeRatio, t("dash.timeGoal"), `${formatDuration(todayMs)} / ${t("modal.minutesUnit", { n: settings.dailyTimeGoalMin })}`);
+    this.timeRing = time.handle;
+    this.timeLabelEl = time.label;
     return section;
   }
 
@@ -199,32 +367,37 @@ export class DashboardView extends ItemView {
     const session = this.plugin.session.get();
     const engine = this.plugin.engine;
     const section = parent.createDiv({ cls: "typelog-section typelog-section-file" });
-    section.createEl("h3", { text: "当前文件", cls: "typelog-section-title" });
+    section.createEl("h3", { text: t("dash.currentFile"), cls: "typelog-section-title" });
     if (session && engine) {
       const frow = section.createDiv({ cls: "typelog-overview-row" });
       const fitem = (label: string, value: string) => {
         const d = frow.createDiv({ cls: "typelog-overview-item" });
-        d.createDiv({ cls: "typelog-overview-value" }).setText(value);
+        const v = d.createDiv({ cls: "typelog-overview-value" });
+        v.setText(value);
         d.createDiv({ cls: "typelog-overview-label" }).setText(label);
+        return v;
       };
-      fitem("净字数", formatNumber(session.netStartWords + session.deltaWords));
-      fitem("累计输入", formatNumber(session.grossTyped));
-      fitem("删改", formatNumber(session.deletedChars));
-      fitem("活跃时长", formatDuration(session.activeTimeMs));
-      fitem("当前速度", `${formatNumber(engine.getCpm())} 字/分`);
+      this.fileNetEl = fitem(t("dash.netWords"), formatNumber(session.netStartWords + session.deltaWords));
+      this.fileGrossEl = fitem(t("dash.grossTyped"), formatNumber(session.grossTyped));
+      this.fileDeletedEl = fitem(t("dash.deleted"), formatNumber(session.deletedChars));
+      this.fileActiveEl = fitem(t("dash.activeTime"), formatDuration(session.activeTimeMs));
+      this.fileCpmEl = fitem(t("dash.currentSpeed"), `${formatNumber(engine.getCpm())} ${t("sb.speedUnit")}`);
 
-      // 分钟级增长曲线（宽度自适应容器）
-      if (session.minuteSeries.length >= 1) {
+      // 分钟级增长曲线（宽度自适应容器）；超长会话仅渲染最近 120 个采样点，避免 DOM 节点膨胀
+      const series = session.minuteSeries.slice(-120);
+      this.chartLen = series.length;
+      if (series.length >= 1) {
         const chartBox = section.createDiv({ cls: "typelog-chart" });
-        chartBox.createDiv({ cls: "typelog-chart-label" }).setText("字数增长");
-        const points = session.minuteSeries.map((s, i) => ({ x: i, y: s.delta }));
+        chartBox.createDiv({ cls: "typelog-chart-label" }).setText(t("dash.chartLabel"));
+        const points = series.map((s, i) => ({ x: i, y: s.delta }));
         const chartWidth = Math.max(240, (this.root.clientWidth || 320) - 20);
         renderLineChart(chartBox.createDiv({ cls: "typelog-chart-svg" }), points, { width: chartWidth, height: 110 });
       } else {
-        section.createDiv({ cls: "typelog-empty" }).setText("编辑超过1分钟生成曲线");
+        section.createDiv({ cls: "typelog-empty" }).setText(t("dash.chartEmpty"));
       }
     } else {
-      section.createDiv({ cls: "typelog-empty" }).setText("打开并编辑一个 Markdown 文件开始统计");
+      this.chartLen = -1;
+      section.createDiv({ cls: "typelog-empty" }).setText(t("dash.fileEmpty"));
     }
     return section;
   }
@@ -233,7 +406,7 @@ export class DashboardView extends ItemView {
   private buildHeatmapSection(parent: HTMLElement): HTMLElement {
     const globalStats = this.plugin.store.getGlobalStats();
     const section = parent.createDiv({ cls: "typelog-section typelog-section-heat" });
-    section.createEl("h3", { text: "打字热力图", cls: "typelog-section-title" });
+    section.createEl("h3", { text: t("dash.heatmap"), cls: "typelog-section-title" });
 
     const now = new Date();
     const year = now.getFullYear();
@@ -243,11 +416,18 @@ export class DashboardView extends ItemView {
     const offset = (new Date(year, month, 1).getDay() + 6) % 7;
     const numCols = Math.ceil((offset + daysInMonth) / 7);
     const cols = [] as { minutes: number; isCurrent: boolean }[][];
+    // 今日格在网格中的位置（列=周索引，行=星期索引），供增量更新今日格 fill
+    let todayRow = 0;
+    let todayCol = 0;
     for (let c = 0; c < numCols; c++) {
       const col: { minutes: number; isCurrent: boolean }[] = [];
       for (let r = 0; r < 7; r++) {
         const d = new Date(year, month, 1 + (c * 7 + r) - offset);
         const isCurrent = d.getMonth() === month;
+        if (isCurrent && d.getDate() === now.getDate()) {
+          todayRow = r;
+          todayCol = c;
+        }
         let minutes = 0;
         if (isCurrent) {
           const hours = globalStats.heatmap[dateKey(d)];
@@ -257,17 +437,20 @@ export class DashboardView extends ItemView {
       }
       cols.push(col);
     }
-    renderHeatmap(section.createDiv({ cls: "typelog-heatmap" }), {
+    const heatmapContainer = section.createDiv({ cls: "typelog-heatmap" });
+    renderHeatmap(heatmapContainer, {
       cols,
       cellSize: 20,
     });
+    // rect 按「行(星期) 外循环 × 列(周) 内循环」顺序创建，索引 = r*7+c
+    this.heatTodayRect = heatmapContainer.querySelectorAll<SVGRectElement>("rect")[todayRow * 7 + todayCol] ?? null;
 
     const legend = section.createDiv({ cls: "typelog-legend" });
-    legend.createSpan().setText("少");
+    legend.createSpan().setText(t("dash.legendLess"));
     ["var(--background-modifier-border)", "#d7f0e0", "#a6e2ba", "#5cc786", "#2ea85f", "#1d8a49"].forEach((c) => {
       legend.createSpan({ cls: "typelog-legend-cell" }).setCssProps({ background: c });
     });
-    legend.createSpan().setText("多");
+    legend.createSpan().setText(t("dash.legendMore"));
     return section;
   }
 
@@ -277,12 +460,12 @@ export class DashboardView extends ItemView {
     const settings = this.plugin.settings;
 
     const section = parent.createDiv({ cls: "typelog-section typelog-section-pomo" });
-    section.createEl("h3", { text: "番茄钟", cls: "typelog-section-title" });
+    section.createEl("h3", { text: t("dash.pomodoro"), cls: "typelog-section-title" });
 
     if (!settings.pomodoroEnabled) {
       const disabled = section.createDiv({ cls: "typelog-pomodoro-disabled" });
-      disabled.createDiv({ cls: "typelog-pomodoro-disabled-title", text: "🍅 番茄钟未开启" });
-      disabled.createDiv({ cls: "typelog-pomodoro-disabled-hint", text: "请在「设置 → 番茄钟提醒」中开启后使用" });
+      disabled.createDiv({ cls: "typelog-pomodoro-disabled-title", text: t("dash.pomoDisabled") });
+      disabled.createDiv({ cls: "typelog-pomodoro-disabled-hint", text: t("dash.pomoDisabledHint") });
       return section;
     }
 
@@ -290,9 +473,10 @@ export class DashboardView extends ItemView {
 
     // 状态 + 模式
     const state = engine.isPomodoroPaused() ? "paused" : engine.isPomodoroRunning() ? "running" : "idle";
-    const stateText = state === "paused" ? "已暂停" : state === "running" ? "进行中" : "未开始";
+    this.pomoStateCached = state;
+    const stateText = state === "paused" ? t("dash.pomoStatePaused") : state === "running" ? t("dash.pomoStateRunning") : t("dash.pomoStateIdle");
     card.createDiv({ cls: `typelog-pomodoro-state ${state}` }).setText(stateText);
-    const modeText = settings.pomodoroMode === "real" ? "纯计时" : "活跃计时";
+    const modeText = settings.pomodoroMode === "real" ? t("dash.pomoModeReal") : t("dash.pomoModeActive");
     card.createDiv({ cls: "typelog-pomodoro-mode" }).setText(`${modeText}`);
 
     // 剩余时间：运行中为倒计时；未开始时显示目标时长（可编辑）
@@ -300,6 +484,7 @@ export class DashboardView extends ItemView {
     const totalSec = Math.max(0, Math.ceil(remain / 1000));
     const m = Math.floor(totalSec / 60);
     const s = totalSec % 60;
+    this.pomoTimeEl = null;
     if (!engine.isPomodoroRunning()) {
       const editRow = card.createDiv({ cls: "typelog-pomodoro-time-edit" });
       const mmInput = editRow.createEl("input", { cls: "typelog-pomodoro-time-input typelog-pomodoro-time-mm" });
@@ -360,32 +545,35 @@ export class DashboardView extends ItemView {
     } else {
       const timeEl = card.createDiv({ cls: "typelog-pomodoro-time" });
       timeEl.setText(`${m}:${pad2(s)}`);
-      timeEl.title = "番茄钟进行中，时长不可修改";
+      timeEl.title = t("dash.pomoTimeTitle");
+      this.pomoTimeEl = timeEl;
     }
 
     // 进度条
     const total = settings.pomodoroMinutes * 60_000;
     const ratio = total > 0 ? Math.min(1, Math.max(0, 1 - remain / total)) : 0;
     const bar = card.createDiv({ cls: "typelog-pomodoro-bar" });
-    bar.createDiv({ cls: "typelog-pomodoro-bar-fill" }).setCssProps({ width: `${(ratio * 100).toFixed(1)}%` });
+    const barFill = bar.createDiv({ cls: "typelog-pomodoro-bar-fill" });
+    barFill.setCssProps({ width: `${(ratio * 100).toFixed(1)}%` });
+    this.pomoBarFillEl = barFill;
 
     // 操作按钮
     const row = card.createDiv({ cls: "typelog-pomodoro-actions" });
     if (!engine.isPomodoroRunning()) {
-      const start = row.createEl("button", { text: "开始番茄钟", cls: "mod-cta" });
+      const start = row.createEl("button", { text: t("dash.pomoStart"), cls: "mod-cta" });
       start.addEventListener("click", () => this.plugin.startPomodoro());
-      const stop = row.createEl("button", { text: "停止", cls: "mod-warning" });
+      const stop = row.createEl("button", { text: t("dash.pomoStop"), cls: "mod-warning" });
       stop.disabled = true;
-      stop.title = "番茄钟未开始";
+      stop.title = t("dash.pomoStopDisabledTitle");
     } else if (engine.isPomodoroPaused()) {
-      const resume = row.createEl("button", { text: "继续", cls: "mod-cta" });
+      const resume = row.createEl("button", { text: t("dash.pomoResume"), cls: "mod-cta" });
       resume.addEventListener("click", () => this.plugin.resumePomodoro());
-      const stop = row.createEl("button", { text: "停止", cls: "mod-warning" });
+      const stop = row.createEl("button", { text: t("dash.pomoStop"), cls: "mod-warning" });
       stop.addEventListener("click", () => this.plugin.confirmStopPomodoro());
     } else {
-      const pause = row.createEl("button", { text: "暂停" });
+      const pause = row.createEl("button", { text: t("dash.pomoPause") });
       pause.addEventListener("click", () => this.plugin.pausePomodoro());
-      const stop = row.createEl("button", { text: "停止", cls: "mod-warning" });
+      const stop = row.createEl("button", { text: t("dash.pomoStop"), cls: "mod-warning" });
       stop.addEventListener("click", () => this.plugin.confirmStopPomodoro());
     }
     return section;
