@@ -1,27 +1,31 @@
-import { MarkdownView, Notice, Plugin } from "obsidian";
-import { TypeLogSettings, DEFAULT_SETTINGS, UiLang } from "./core/settings";
+import { MarkdownView, Notice, Plugin, FileSystemAdapter } from "obsidian";
+import {
+  TypeLogSettings,
+  DEFAULT_SETTINGS,
+  UiLang,
+  STATUS_BAR_ITEM_IDS,
+  type StatusBarItemConfig,
+  type StatusBarItemId,
+} from "./core/settings";
 import { setLang, t } from "./core/i18n";
 import { StatsStore } from "./core/statsStore";
 import { SessionStatsStore } from "./core/sessionStore";
 import { compileIgnorePatterns, IgnoreMatcher } from "./core/pathFilter";
 import { defaultExportName, formatMinutesSeconds, safeFileName } from "./core/format";
-import { StatsEngine, toAbsolutePath } from "./tracking/statsEngine";
+import { buildCsvExport } from "./core/csvExport";
+import { buildMarkdownReport, type ReportRange, type ReportTemplate } from "./core/reportBuilder";
+import { StatsEngine, toStatsKey } from "./tracking/statsEngine";
 import { AdaptiveStorageAdapter, getNodeRequire, isSystemPath } from "./tracking/storageAdapter";
 import { UiController } from "./ui/uiController";
 import { ConfirmModal, DoubleConfirmModal } from "./ui/doubleConfirmModal";
 import { ExportStatsModal } from "./ui/exportModal";
+import { ImportStatsModal } from "./ui/importModal";
+import { RankingModal } from "./ui/rankingModal";
 import { TypeLogSettingTab } from "./ui/settingsTab";
-
-// CSV 字段转义：含逗号/引号/换行时加引号包裹并双写内部引号；
-// 以 = + - @ 开头时前置单引号，防止在 Excel 中被当作公式执行（CSV 注入防护）
-function csvField(v: string | number): string {
-  const s = String(v);
-  const safe = /^[=+@-]/.test(s) ? "'" + s : s;
-  return /[",\n\r]/.test(safe) ? '"' + safe.replace(/"/g, '""') + '"' : safe;
-}
+import type { FileStats } from "./types";
 
 // 设置加载消毒：仅采纳类型与取值范围合法的字段，避免旧版本/损坏数据覆盖默认值
-function sanitizeSettings(data: Partial<TypeLogSettings> | null | undefined): Partial<TypeLogSettings> {
+export function sanitizeSettings(data: Partial<TypeLogSettings> | null | undefined): Partial<TypeLogSettings> {
   const out: Partial<TypeLogSettings> = {};
   if (!data || typeof data !== "object") return out;
   if (data.language === "zh" || data.language === "en") out.language = data.language;
@@ -40,6 +44,11 @@ function sanitizeSettings(data: Partial<TypeLogSettings> | null | undefined): Pa
     out.dailyWordGoal = data.dailyWordGoal;
   if (typeof data.dailyTimeGoalMin === "number" && Number.isFinite(data.dailyTimeGoalMin) && data.dailyTimeGoalMin >= 0)
     out.dailyTimeGoalMin = data.dailyTimeGoalMin;
+  if (typeof data.weeklyWordGoal === "number" && Number.isFinite(data.weeklyWordGoal) && data.weeklyWordGoal >= 0)
+    out.weeklyWordGoal = data.weeklyWordGoal;
+  if (typeof data.weeklyTimeGoalMin === "number" && Number.isFinite(data.weeklyTimeGoalMin) && data.weeklyTimeGoalMin >= 0)
+    out.weeklyTimeGoalMin = data.weeklyTimeGoalMin;
+  if (typeof data.goalNotify === "boolean") out.goalNotify = data.goalNotify;
   if (typeof data.pomodoroEnabled === "boolean") out.pomodoroEnabled = data.pomodoroEnabled;
   if (typeof data.pomodoroMinutes === "number" && Number.isFinite(data.pomodoroMinutes) && data.pomodoroMinutes > 0)
     out.pomodoroMinutes = data.pomodoroMinutes;
@@ -60,6 +69,28 @@ function sanitizeSettings(data: Partial<TypeLogSettings> | null | undefined): Pa
     data.dailyRetentionDays >= 0
   )
     out.dailyRetentionDays = data.dailyRetentionDays;
+  // 状态栏显示项：白名单校验（仅采纳合法 id + boolean 开关），去重，损坏数据回退默认
+  if (Array.isArray(data.statusBarItems)) {
+    const seen = new Set<string>();
+    const items: StatusBarItemConfig[] = [];
+    for (const it of data.statusBarItems) {
+      const id = (it as { id?: unknown } | null)?.id;
+      if (typeof id === "string" && (STATUS_BAR_ITEM_IDS as string[]).includes(id) && !seen.has(id)) {
+        seen.add(id);
+        items.push({ id: id as StatusBarItemId, enabled: (it as { enabled?: unknown }).enabled !== false });
+      }
+    }
+    if (items.length > 0) {
+      // 旧设置文件缺 goal 项时自动补齐（目标进度条默认启用，插在「今日总输入」之后，保持默认布局）
+      if (!seen.has("goal")) {
+        const goal: StatusBarItemConfig = { id: "goal", enabled: true };
+        const gi = items.findIndex((i) => i.id === "todayGross");
+        if (gi >= 0) items.splice(gi + 1, 0, goal);
+        else items.push(goal);
+      }
+      out.statusBarItems = items;
+    }
+  }
   return out;
 }
 
@@ -91,12 +122,25 @@ export default class TypeLogPlugin extends Plugin {
       const path = req("path");
       globalPath = path.join(os.homedir(), ".typelog", "global.json");
     }
-    this.store = new StatsStore(this.storage, {
-      fileStats: ".typelog/file-stats.json",
-      project: ".typelog/project.json",
-      globalStats: globalPath,
-    });
+    this.store = new StatsStore(
+      this.storage,
+      {
+        fileStats: ".typelog/file-stats.json",
+        project: ".typelog/project.json",
+        globalStats: globalPath,
+      },
+      {
+        // 连续写盘失败时提示（优化 5）
+        onFlushError: () => new Notice(t("notice.flushError")),
+      },
+    );
     await this.store.load();
+
+    // 启动一次性迁移：旧版本文件统计 key 为绝对路径（D:/vault/xxx.md），
+    // vault 移动/换机后全部失效；统一映射为 vault 相对路径（幂等，二次启动自动跳过）
+    const adapter = this.app.vault.adapter;
+    const basePath = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : null;
+    if (this.store.migratePaths(basePath) > 0) void this.store.flush();
 
     // 统计引擎
     this.engine = new StatsEngine({
@@ -108,6 +152,7 @@ export default class TypeLogPlugin extends Plugin {
       isExcluded: (p) => this.ignoreMatcher(p),
       onUiUpdate: () => this.onUiUpdate(),
       onPomodoroDue: () => this.onPomodoroDue(),
+      onGoalDue: () => this.onGoalDue(),
     });
     this.engine.start();
 
@@ -130,7 +175,7 @@ export default class TypeLogPlugin extends Plugin {
   // 语言切换后立即生效：重建状态栏/统计面板/设置页，并更新命令名称
   applyLanguage() {
     this.ui.applyLanguage();
-    this.settingTab?.display();
+    this.settingTab?.refresh();
     this.registerCommands();
   }
 
@@ -157,6 +202,11 @@ export default class TypeLogPlugin extends Plugin {
     notice.messageEl.addClass("typelog-notice-center");
     // 一轮结束自动复位，需手动开始下一轮
     this.engine.stopPomodoro();
+  }
+
+  // 每日目标达成通知（功能 5）
+  private onGoalDue() {
+    new Notice(t("notice.goalDone"));
   }
 
   // 切换番茄钟运行状态（状态栏/设置按钮/命令触发）
@@ -232,6 +282,30 @@ export default class TypeLogPlugin extends Plugin {
       callback: () => new ExportStatsModal(this.app, this).open(),
     });
     this.addCommand({
+      id: "export-report",
+      name: t("cmd.exportReport"),
+      // 一键生成：默认完整版 + 近 7 天，写入 typelog-reports/
+      callback: () => void this.exportStats("md", "typelog-reports", "", { mdTemplate: "full", mdRange: 7 }),
+    });
+    this.addCommand({
+      id: "export-backup",
+      name: t("cmd.exportBackup"),
+      callback: () =>
+        void this.exportBackup()
+          .then((p) => new Notice(t("notice.exportDone", { path: p })))
+          .catch((e) => new Notice(t("notice.exportFail", { err: String(e) }))),
+    });
+    this.addCommand({
+      id: "import-stats",
+      name: t("cmd.importStats"),
+      callback: () => this.openImportModal(),
+    });
+    this.addCommand({
+      id: "open-ranking",
+      name: t("cmd.openRanking"),
+      callback: () => new RankingModal(this.app, this).open(),
+    });
+    this.addCommand({
       id: "hard-reset",
       name: t("cmd.hardReset"),
       callback: () => this.confirmHardReset(),
@@ -250,7 +324,7 @@ export default class TypeLogPlugin extends Plugin {
       new Notice(t("notice.noMarkdown"));
       return;
     }
-    const abs = toAbsolutePath(this.app.vault, view.file.path);
+    const abs = toStatsKey(view.file.path);
     this.session.begin(abs, view.editor.getValue(), this.settings.countMode, Date.now());
     new Notice(t("notice.sessionReset"));
   }
@@ -312,7 +386,13 @@ export default class TypeLogPlugin extends Plugin {
   }
 
   // 导出统计报表：目录可为 vault 内相对路径或系统绝对路径（含 Windows 资源管理器选择的文件夹）
-  async exportStats(format: "json" | "csv", dir = "typelog-exports", name = "") {
+  // format: json（全量）/ csv（文件级 或 文件+每日+热力图）/ md（Markdown 统计报告，可选模板与范围）
+  async exportStats(
+    format: "json" | "csv" | "md",
+    dir = "typelog-exports",
+    name = "",
+    opts: { csvContent?: "files" | "all"; mdTemplate?: ReportTemplate; mdRange?: ReportRange } = {},
+  ) {
     const data = {
       exportedAt: new Date().toISOString(),
       global: this.store.getGlobalStats(),
@@ -326,13 +406,17 @@ export default class TypeLogPlugin extends Plugin {
     const content =
       format === "json"
         ? JSON.stringify(data, null, 2)
-        : (() => {
-            const header = "path,grossTyped,deletedChars,activeTimeMs,firstSeen,lastOpened";
-            const rows = this.store
-              .getAllFileStats()
-              .map((f) => [csvField(f.path), f.grossTyped, f.deletedChars, f.activeTimeMs, f.firstSeen, f.lastOpened].join(","));
-            return "\uFEFF" + header + "\n" + rows.join("\n");
-          })();
+        : format === "md"
+          ? buildMarkdownReport(
+              {
+                global: this.store.getGlobalStats(),
+                files: this.filterExistingFiles(this.store.getAllFileStats()),
+                pluginVersion: this.manifest.version,
+                vaultName: this.app.vault.getName(),
+              },
+              { template: opts.mdTemplate ?? "full", range: opts.mdRange ?? 7 },
+            )
+          : buildCsvExport(this.store.getGlobalStats(), this.store.getAllFileStats(), opts.csvContent ?? "all");
     try {
       if (isSystemPath(targetDir)) {
         // 系统绝对路径（vault 外）：Node fs 写入，自动创建目录
@@ -352,6 +436,98 @@ export default class TypeLogPlugin extends Plugin {
     } catch (e) {
       new Notice(t("notice.exportFail", { err: String(e) }));
     }
+  }
+
+  // 过滤已被删除的文件统计（报告/排行只展示当前 vault 中存在的文件）
+  private filterExistingFiles<T extends { path: string }>(files: T[]): T[] {
+    const vault = this.app.vault;
+    return files.filter((f) => vault.getAbstractFileByPath(f.path) !== null);
+  }
+
+  // 当前 vault 中仍存在的文件统计（排行/报告共用）
+  getExistingFileStats(): FileStats[] {
+    return this.filterExistingFiles(this.store.getAllFileStats());
+  }
+
+  // ---- 数据备份 / 导入恢复（功能 4）----
+  // 导出单一 .typelog 备份文件（自描述 JSON，含 format/version 头）
+  async exportBackup(dir = "typelog-backups", name = ""): Promise<string> {
+    const backup = {
+      format: "typelog-backup",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      source: {
+        pluginVersion: this.manifest.version,
+        vaultName: this.app.vault.getName(),
+        vaultPath: this.getVaultBasePath() ?? "",
+      },
+      data: {
+        fileStats: Object.fromEntries(this.store.getAllFileStats().map((f) => [f.path, f])),
+        project: this.store.getProjectStats(),
+        global: this.store.getGlobalStats(),
+        settings: this.settings,
+      },
+    };
+    const safeName = safeFileName(name || `typelog-backup-${defaultExportName()}`) || `typelog-backup-${defaultExportName()}`;
+    const targetDir = dir.trim().replace(/[\\/]+$/g, "") || "typelog-backups";
+    const filePath = `${targetDir}/${safeName}.typelog`;
+    const content = JSON.stringify(backup, null, 2);
+    if (isSystemPath(targetDir)) {
+      await this.storage.write(filePath, content);
+    } else {
+      let cur = "";
+      for (const part of targetDir.split("/")) {
+        cur = cur ? `${cur}/${part}` : part;
+        if (!(await this.app.vault.adapter.exists(cur))) {
+          await this.app.vault.adapter.mkdir(cur);
+        }
+      }
+      await this.app.vault.create(filePath, content);
+    }
+    return filePath;
+  }
+
+  // 导入 .typelog 备份：校验 → 导入前自动备份 → 按模式合并/覆盖 → 可选恢复设置
+  async importStats(path: string, mode: "merge" | "overwrite", restoreSettings: boolean): Promise<void> {
+    const content = await this.storage.read(path);
+    if (!content) throw new Error(t("notice.importReadFail"));
+    let parsed: { format?: unknown; version?: unknown; data?: unknown };
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      throw new Error(t("notice.importInvalid"));
+    }
+    if (!parsed || parsed.format !== "typelog-backup") throw new Error(t("notice.importInvalid"));
+    if (parsed.version !== 1) throw new Error(t("notice.importVersion"));
+
+    // 导入前自动备份当前数据（可回滚）
+    try {
+      await this.exportBackup(".typelog/backups", `backup-before-import-${Date.now()}`);
+    } catch (e) {
+      console.error("[TypeLog] 导入前自动备份失败：", e);
+    }
+
+    const data = (parsed.data ?? {}) as { fileStats?: unknown; project?: unknown; global?: unknown; settings?: unknown };
+    this.store.applyImport(data, mode, this.getVaultBasePath());
+
+    if (restoreSettings && data.settings && typeof data.settings === "object") {
+      this.settings = Object.assign({}, DEFAULT_SETTINGS, sanitizeSettings(data.settings as Partial<TypeLogSettings>));
+      await this.saveSettings();
+      this.applyLanguage();
+    }
+    await this.store.flush();
+    this.ui.refresh();
+  }
+
+  // vault 基础路径（桌面端 FileSystemAdapter）；非桌面端返回 null
+  private getVaultBasePath(): string | null {
+    const adapter = this.app.vault.adapter;
+    return adapter instanceof FileSystemAdapter ? adapter.getBasePath() : null;
+  }
+
+  // 打开导入弹窗（覆盖模式内部二次确认）
+  openImportModal() {
+    new ImportStatsModal(this.app, this).open();
   }
 
   async loadSettings() {
