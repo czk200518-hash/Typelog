@@ -15,6 +15,16 @@ export class Plugin {}
 export class Modal {}
 export class Setting {}
 export class WorkspaceLeaf {}
+export class AbstractInputSuggest<T> {}
+export class PluginSettingTab {}
+export class TFolder {}
+export class ExtraButtonComponent {}
+export class ToggleComponent {}
+export class DropdownComponent {}
+export class TextComponent {}
+export class TextAreaComponent {}
+export class SliderComponent {}
+export function setIcon(_el: HTMLElement, _icon: string): void {}
 export class ItemView {
   contentEl!: HTMLElement;
   constructor(public leaf: unknown) {
