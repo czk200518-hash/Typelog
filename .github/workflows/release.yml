@@ -49,4 +49,6 @@ jobs:
             main.js
             styles.css
             manifest.json
+          # 重建同名 tag（如手动重新触发构建）时覆盖已存在的 release 资产
+          overwrite: true
           generate_release_notes: true
