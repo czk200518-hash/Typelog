@@ -20,7 +20,7 @@ class MemAdapter implements StatsStorageAdapter {
 describe("端到端业务链路（模拟编辑器→统计→三层持久化→导出）", () => {
   it("打开→逐字输入→删除→选中替换→粘贴→活跃计时→导出数据一致", async () => {
     const mem = new MemAdapter();
-    const store = new StatsStore(mem, { fileStats: "f.json", project: "p.json", global: "g.json" });
+    const store = new StatsStore(mem, { fileStats: "f.json", project: "p.json", globalStats: "g.json" });
     await store.load();
     const session = new SessionStatsStore();
     const speed = new SpeedTracker();
@@ -90,16 +90,17 @@ describe("端到端业务链路（模拟编辑器→统计→三层持久化→�
 
     // ---- 导出数据 ----
     const exportData = {
-      global: store.getGlobalStats(),
+      // 模拟导出 JSON 格式键 "global"（字符串字面量键，避免裸标识符）
+      "global": store.getGlobalStats(),
       project: store.getProjectStats(),
       files: store.getAllFileStats(),
     };
     expect(exportData.files.length).toBe(1);
-    expect(exportData.files[0].grossTyped).toBe(exportData.global.grossTypedTotal);
-    expect(exportData.project.grossTyped).toBe(exportData.global.grossTypedTotal);
+    expect(exportData.files[0].grossTyped).toBe(exportData["global"].grossTypedTotal);
+    expect(exportData.project.grossTyped).toBe(exportData["global"].grossTypedTotal);
 
     // ---- 重新加载持久化数据（模拟重启） ----
-    const store2 = new StatsStore(mem, { fileStats: "f.json", project: "p.json", global: "g.json" });
+    const store2 = new StatsStore(mem, { fileStats: "f.json", project: "p.json", globalStats: "g.json" });
     await store2.load();
     expect(store2.getFileStats(filePath)?.grossTyped).toBe(59);
     expect(store2.getGlobalStats().grossTypedTotal).toBe(59);
