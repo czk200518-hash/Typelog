@@ -22,7 +22,7 @@ function globalStats(): GlobalStats {
 const NOW = new Date(2026, 7, 6, 14, 30);
 
 function input(g: GlobalStats, files: FileStats[] = []): ReportInput {
-  return { global: g, files, pluginVersion: "1.0.7", vaultName: "工作库" };
+  return { globalStats: g, files, pluginVersion: "1.0.7", vaultName: "工作库" };
 }
 
 describe("功能 3：Markdown 统计报告生成", () => {
