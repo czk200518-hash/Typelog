@@ -45,4 +45,30 @@ describe("SessionStatsStore 会话统计", () => {
     s.setNetStartWords("一篇文章的正文内容", "strict");
     expect(s.get()?.netStartWords).toBe(9);
   });
+
+  it("begin 传入当天历史采样：曲线继承且新采样在历史累计上连续（跨会话恢复）", () => {
+    const s = new SessionStatsStore();
+    // 历史会话：前一日留下的当天采样，最后一点 delta=500、gross=800
+    const hist = [
+      { t: 1_000, delta: 200, gross: 300 },
+      { t: 2_000, delta: 500, gross: 800 },
+    ];
+    s.begin("/v/a.md", "", "strict", 3_000, { minuteSeries: hist });
+    // 继承历史点
+    expect(s.get()?.minuteSeries).toEqual(hist);
+    // 新会话输入 100 字后采样：delta/gross 在历史基础上累加
+    s.applyChange({ typed: 100, deleted: 20, net: 80, isPaste: false, typedManual: 100 });
+    s.pushMinuteSample(4_000);
+    const series = s.get()!.minuteSeries;
+    expect(series.length).toBe(3);
+    expect(series[2]).toEqual({ t: 4_000, delta: 580, gross: 900 }); // 500+80 / 800+100
+  });
+
+  it("无历史采样时偏移为 0，行为与旧版一致", () => {
+    const s = new SessionStatsStore();
+    s.begin("/v/a.md", "", "strict", 0);
+    s.applyChange({ typed: 10, deleted: 0, net: 10, isPaste: false, typedManual: 10 });
+    s.pushMinuteSample(1_000);
+    expect(s.get()?.minuteSeries).toEqual([{ t: 1_000, delta: 10, gross: 10 }]);
+  });
 });
