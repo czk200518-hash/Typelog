@@ -30,12 +30,6 @@ Search "TypeLog" in the community plugin store, or install manually:
 
 Open a Markdown file and start typing. The status bar shows your current speed and today's numbers; click any item to open the details panel. The ribbon icon, or the command "TypeLog: Open stats window", opens the full dashboard with today's summary and the trend charts.
 
-## Where the data lives
-
-- Per file: `vault/.typelog/file-stats.json`
-- Per vault: `vault/.typelog/project.json`
-- Global (all vaults): `~/.typelog/global.json`
-
 ## Development
 
 ```bash
