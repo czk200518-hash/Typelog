@@ -1,7 +1,9 @@
-// 导出统计报表弹窗：可选择导出格式、导出目录（资源管理器选择或 vault 内文件夹补全）与文件名
+// 导出统计报表弹窗：可选择导出格式、导出目录（资源管理器选择或 vault 内文件夹补全）与文件名。
+// 格式：JSON（全量）/ CSV（文件级 或 全部区块）/ Markdown（完整/精简模板 + 范围可选）
 import { AbstractInputSuggest, App, FileSystemAdapter, Modal, Notice, Setting, TFolder } from "obsidian";
 import type TypeLogPlugin from "../main";
 import { defaultExportName } from "../core/format";
+import type { ReportRange, ReportTemplate } from "../core/reportBuilder";
 import { getNodeRequire } from "../tracking/storageAdapter";
 import { t } from "../core/i18n";
 
@@ -51,9 +53,16 @@ export async function pickSystemFolder(): Promise<string | null> {
 }
 
 export class ExportStatsModal extends Modal {
-  private format: "json" | "csv" = "json";
+  private format: "json" | "csv" | "md" = "json";
   private dir = "typelog-exports";
   private fileName = defaultExportName();
+  // CSV 导出内容（文件级 / 全部）
+  private csvContent: "files" | "all" = "all";
+  // Markdown 报告选项
+  private mdTemplate: ReportTemplate = "full";
+  private mdRange: ReportRange = 7;
+  // 格式相关的条件设置项容器（格式切换时重建）
+  private extraSetting: Setting | null = null;
 
   constructor(app: App, private plugin: TypeLogPlugin) {
     super(app);
@@ -61,6 +70,11 @@ export class ExportStatsModal extends Modal {
   }
 
   onOpen() {
+    this.build();
+  }
+
+  // 重建弹窗内容（格式切换时整体重建，保持 dir/fileName 状态）
+  private build() {
     const { contentEl } = this;
     contentEl.empty();
 
@@ -68,9 +82,15 @@ export class ExportStatsModal extends Modal {
       dd
         .addOption("json", "JSON")
         .addOption("csv", "CSV")
+        .addOption("md", "Markdown")
         .setValue(this.format)
-        .onChange((v) => (this.format = v as "json" | "csv")),
+        .onChange((v) => {
+          this.format = v as "json" | "csv" | "md";
+          this.build();
+        }),
     );
+
+    this.buildExtra(contentEl);
 
     let dirText: { setValue(v: string): void };
     new Setting(contentEl)
@@ -105,8 +125,41 @@ export class ExportStatsModal extends Modal {
     );
   }
 
+  // 格式相关条件设置（CSV 内容 / MD 模板 + 范围）
+  private buildExtra(container: HTMLElement) {
+    if (this.format === "csv") {
+      new Setting(container).setName(t("export.content")).addDropdown((dd) =>
+        dd
+          .addOption("files", t("export.contentFiles"))
+          .addOption("all", t("export.contentAll"))
+          .setValue(this.csvContent)
+          .onChange((v) => (this.csvContent = v as "files" | "all")),
+      );
+    } else if (this.format === "md") {
+      new Setting(container).setName(t("export.template")).addDropdown((dd) =>
+        dd
+          .addOption("full", t("export.templateFull"))
+          .addOption("brief", t("export.templateBrief"))
+          .setValue(this.mdTemplate)
+          .onChange((v) => (this.mdTemplate = v as ReportTemplate)),
+      );
+      new Setting(container).setName(t("export.range")).addDropdown((dd) =>
+        dd
+          .addOption("7", t("export.range7"))
+          .addOption("30", t("export.range30"))
+          .addOption("month", t("export.rangeMonth"))
+          .setValue(String(this.mdRange))
+          .onChange((v) => (this.mdRange = (v === "month" ? "month" : parseInt(v, 10)) as ReportRange)),
+      );
+    }
+  }
+
   private doExport() {
-    void this.plugin.exportStats(this.format, this.dir, this.fileName);
+    void this.plugin.exportStats(this.format, this.dir, this.fileName, {
+      csvContent: this.format === "csv" ? this.csvContent : undefined,
+      mdTemplate: this.format === "md" ? this.mdTemplate : undefined,
+      mdRange: this.format === "md" ? this.mdRange : undefined,
+    });
     this.close();
   }
 
