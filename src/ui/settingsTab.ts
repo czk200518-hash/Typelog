@@ -1,7 +1,7 @@
 // TypeLog 设置页
-import { App, PluginSettingTab, Setting, setIcon, type SettingDefinitionItem, type SliderComponent, type TextComponent } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting, setIcon, type SettingDefinitionItem, type SliderComponent, type TextComponent } from "obsidian";
 import type TypeLogPlugin from "../main";
-import { CountMode, PomodoroMode, UiLang } from "../core/settings";
+import { CountMode, PomodoroMode, STATUS_BAR_ITEM_IDS, UiLang, reorderStatusBarItems } from "../core/settings";
 import { formatMinutesSeconds, parseMinutesSeconds } from "../core/format";
 import { t } from "../core/i18n";
 import { ExportStatsModal } from "./exportModal";
@@ -16,7 +16,13 @@ export class TypeLogSettingTab extends PluginSettingTab {
     return [];
   }
 
+  // 渲染逻辑统一放入公开 refresh()；display() 仅由框架调用（实现抽象方法），
+  // 语言切换等主动重渲染走 refresh()，避免直接调用被标记废弃的 display()
   display(): void {
+    this.refresh();
+  }
+
+  refresh(): void {
     const { containerEl } = this;
     containerEl.empty();
 
@@ -65,6 +71,12 @@ export class TypeLogSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }),
       );
+
+    // 状态栏显示项（功能 8）：勾选启停 + 拖拽/按钮调整顺序
+    new Setting(containerEl).setName(t("st.statusBarItems")).setHeading();
+    containerEl.createDiv({ cls: "setting-item-description" }).setText(t("st.statusBarItemsDesc"));
+    const sbList = containerEl.createDiv({ cls: "typelog-sb-items" });
+    this.renderSbItemList(sbList);
 
 //    new Setting(containerEl)
 //      .setName("统计窗口模式")
@@ -200,6 +212,43 @@ export class TypeLogSettingTab extends PluginSettingTab {
         }),
       );
 
+    // ---- 周目标（功能 7）----
+    new Setting(containerEl)
+      .setName(t("st.weeklyWordGoal"))
+      .setDesc(t("st.weeklyWordGoalDesc"))
+      .addText((text) =>
+        text.setValue(String(this.plugin.settings.weeklyWordGoal)).onChange(async (v) => {
+          const n = parseInt(v, 10);
+          if (!isNaN(n) && n >= 0) {
+            this.plugin.settings.weeklyWordGoal = n;
+            await this.plugin.saveSettings();
+          }
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName(t("st.weeklyTimeGoal"))
+      .setDesc(t("st.weeklyTimeGoalDesc"))
+      .addText((text) =>
+        text.setValue(String(this.plugin.settings.weeklyTimeGoalMin)).onChange(async (v) => {
+          const n = parseInt(v, 10);
+          if (!isNaN(n) && n >= 0) {
+            this.plugin.settings.weeklyTimeGoalMin = n;
+            await this.plugin.saveSettings();
+          }
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName(t("st.goalNotify"))
+      .setDesc(t("st.goalNotifyDesc"))
+      .addToggle((tg) =>
+        tg.setValue(this.plugin.settings.goalNotify).onChange(async (v) => {
+          this.plugin.settings.goalNotify = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
     // ---- 番茄钟 ----
     new Setting(containerEl)
       .setName(t("st.pomodoroEnabled"))
@@ -271,6 +320,25 @@ export class TypeLogSettingTab extends PluginSettingTab {
         b.setButtonText(t("st.exportBtn")).setCta().onClick(() => new ExportStatsModal(this.app, this.plugin).open()),
       );
 
+    new Setting(containerEl)
+      .setName(t("st.backup"))
+      .setDesc(t("st.backupDesc"))
+      .addButton((b) =>
+        b.setButtonText(t("st.backupBtn")).onClick(() => {
+          void this.plugin
+            .exportBackup()
+            .then((p) => new Notice(t("notice.exportDone", { path: p })))
+            .catch((e) => new Notice(t("notice.exportFail", { err: String(e) })));
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName(t("st.import"))
+      .setDesc(t("st.importDesc"))
+      .addButton((b) =>
+        b.setButtonText(t("st.importBtn")).onClick(() => this.plugin.openImportModal()),
+      );
+
     // ---- 数据老化清理 ----
     new Setting(containerEl)
       .setName(t("st.purgeHeading"))
@@ -329,5 +397,83 @@ export class TypeLogSettingTab extends PluginSettingTab {
         b.buttonEl.addClass("typelog-btn-danger");
         b.onClick(() => this.plugin.confirmHardReset());
       });
+  }
+
+  // ---- 状态栏显示项列表（功能 8）：开关 + 拖拽排序 + 上移/下移按钮兜底 ----
+  // 遍历全量白名单 8 项：已配置项按数组顺序在前，未配置项自动补齐到数组末尾（默认禁用），保证全部可选
+  private renderSbItemList(listEl: HTMLElement) {
+    listEl.empty();
+    let dragIdx = -1;
+    const items = this.plugin.settings.statusBarItems;
+    for (const id of STATUS_BAR_ITEM_IDS) {
+      if (!items.some((i) => i.id === id)) items.push({ id, enabled: false });
+    }
+    items.forEach((item, idx) => {
+      const row = new Setting(listEl);
+      row.setName(t(`sbItem.${item.id}`));
+      row.settingEl.addClass("typelog-sb-item");
+      // 行容器可拖拽（HTML5 原生拖放 API，零依赖）
+      row.settingEl.draggable = true;
+      row.settingEl.addEventListener("dragstart", (e) => {
+        dragIdx = idx;
+        e.dataTransfer?.setData("text/plain", String(idx));
+        row.settingEl.addClass("typelog-sb-item-dragging");
+      });
+      row.settingEl.addEventListener("dragend", () => {
+        dragIdx = -1;
+        row.settingEl.removeClass("typelog-sb-item-dragging");
+      });
+      row.settingEl.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        row.settingEl.addClass("typelog-sb-item-over");
+      });
+      row.settingEl.addEventListener("dragleave", () => row.settingEl.removeClass("typelog-sb-item-over"));
+      row.settingEl.addEventListener("drop", (e) => {
+        e.preventDefault();
+        row.settingEl.removeClass("typelog-sb-item-over");
+        const from = dragIdx >= 0 ? dragIdx : parseInt(e.dataTransfer?.getData("text/plain") ?? "-1", 10);
+        if (from >= 0 && from !== idx) {
+          this.reorderSbItem(from, idx);
+          this.renderSbItemList(listEl);
+        }
+      });
+      // 上移/下移兜底按钮（首项禁上移、末项禁下移）
+      row.addExtraButton((b) => {
+        b.setIcon("arrow-up").setTooltip(t("st.statusBarMoveUp")).setDisabled(idx === 0);
+        b.onClick(() => {
+          if (idx > 0) {
+            this.reorderSbItem(idx, idx - 1);
+            this.renderSbItemList(listEl);
+          }
+        });
+      });
+      row.addExtraButton((b) => {
+        b.setIcon("arrow-down").setTooltip(t("st.statusBarMoveDown")).setDisabled(idx === items.length - 1);
+        b.onClick(() => {
+          if (idx < items.length - 1) {
+            this.reorderSbItem(idx, idx + 1);
+            this.renderSbItemList(listEl);
+          }
+        });
+      });
+      // 启停开关
+      row.addToggle((tg) =>
+        tg.setValue(item.enabled).onChange((v) => {
+          item.enabled = v;
+          void this.onSbItemsChanged();
+        }),
+      );
+    });
+  }
+
+  // 重排显示项数组（拖拽/按钮共用纯函数），边界外忽略
+  private reorderSbItem(from: number, to: number) {
+    this.plugin.settings.statusBarItems = reorderStatusBarItems(this.plugin.settings.statusBarItems, from, to);
+  }
+
+  // 显示项变更后：保存设置 + 重建状态栏
+  private async onSbItemsChanged() {
+    await this.plugin.saveSettings();
+    this.plugin.ui.rebuildStatusBar();
   }
 }
