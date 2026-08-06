@@ -1,5 +1,5 @@
 // 统计引擎：编辑器事件→解析→存储/速度/状态机→UI 刷新
-import { MarkdownView, Vault, Workspace, FileSystemAdapter, TFile, EventRef } from "obsidian";
+import { MarkdownView, Vault, Workspace, TFile, EventRef } from "obsidian";
 import type { TypeLogSettings } from "../core/settings";
 import type { ChangeStats } from "../types";
 import { StatsStore } from "../core/statsStore";
@@ -7,15 +7,13 @@ import { SessionStatsStore } from "../core/sessionStore";
 import { ActiveStateMachine } from "../core/activeMachine";
 import { SpeedTracker } from "../core/speedTracker";
 import { EditorTracker } from "./editorTracker";
+import { dateKey } from "../core/format";
 
-// 相对路径转绝对路径（无 FileSystemAdapter 时退回相对路径）
-export function toAbsolutePath(vault: Vault, relativePath: string): string {
-  const adapter = vault.adapter;
-  if (adapter instanceof FileSystemAdapter) {
-    const base = adapter.getBasePath();
-    if (base) return `${base.replace(/\\/g, "/")}/${relativePath.replace(/\\/g, "/")}`;
-  }
-  return relativePath.replace(/\\/g, "/");
+// 统计 key 规范化：统一为 vault 相对路径（/ 分隔、去首尾 /）。
+// 相对路径在 vault 内部唯一且稳定，vault 迁移/换机后文件统计仍可跨设备一致；
+// 绝对路径只用于导出时展示（见 main.ts exportStats）
+export function toStatsKey(relativePath: string): string {
+  return relativePath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
 }
 
 export interface StatsEngineDeps {
@@ -30,6 +28,8 @@ export interface StatsEngineDeps {
   onUiUpdate: () => void;
   // 番茄钟到期回调
   onPomodoroDue: () => void;
+  // 每日目标达成回调（功能 5）
+  onGoalDue: () => void;
 }
 
 export class StatsEngine {
@@ -48,6 +48,8 @@ export class StatsEngine {
   private pomodoroElapsedMs = 0;
   private fileOpenRef: EventRef | null = null;
   private lastMinute = -1;
+  // 目标达成通知：已通知的日期（功能 5，跨天重置，每天最多一次）
+  private goalNotifiedDate = "";
 
   constructor(private deps: StatsEngineDeps) {
     const s = deps.getSettings();
@@ -89,7 +91,7 @@ export class StatsEngine {
     if (!this.currentPath) return false;
     const view = this.deps.workspace.getActiveViewOfType(MarkdownView);
     if (!view || !view.file) return false;
-    return toAbsolutePath(this.deps.vault, view.file.path) === this.currentPath;
+    return toStatsKey(view.file.path) === this.currentPath;
   }
 
   getCurrentPath(): string | null {
@@ -180,12 +182,12 @@ export class StatsEngine {
       this.currentPath = null;
       return;
     }
-    const abs = toAbsolutePath(this.deps.vault, file.path);
-    this.currentPath = abs;
+    const key = toStatsKey(file.path);
+    this.currentPath = key;
     const now = Date.now();
     // 重置状态机基准，避免上一文件残留状态污染新文件计时
     this.activeMachine.start(now);
-    this.deps.store.touchOpen(abs, now);
+    this.deps.store.touchOpen(key, now);
     const mode = this.deps.getSettings().countMode;
     // 优先同步取当前编辑器文本作为会话起点，避免“空文本 begin + 异步校准”与
     // 打开瞬间的编辑事件竞态导致净字数重复/漏计；编辑器未就绪时退回异步 cachedRead 兜底
@@ -201,10 +203,13 @@ export class StatsEngine {
       // 测试桩/极端环境无 workspace 能力，走异步兜底
       calibrated = false;
     }
-    this.deps.session.begin(abs, initialText, mode, now);
+    this.deps.session.begin(key, initialText, mode, now, {
+      // 恢复当天该文件的历史分钟采样，曲线跨会话延续（关闭 Obsidian 前当天的数据不丢失）
+      minuteSeries: this.deps.store.getDaySeries(key, dateKey(new Date(now))),
+    });
     if (!calibrated) {
       // 捕获目标路径，回调时校验当前文件未切换，防止旧文件的校准结果覆盖新会话起点
-      const target = abs;
+      const target = key;
       void this.deps.vault.cachedRead(file).then((text) => {
         if (this.currentPath === target) {
           this.deps.session.setNetStartWords(text, mode);
@@ -247,6 +252,12 @@ export class StatsEngine {
       if (minute !== this.lastMinute) {
         this.lastMinute = minute;
         this.deps.session.pushMinuteSample(now);
+        // 持久化当天采样（每分钟一次，走防抖写盘），关闭 Obsidian 后重开可恢复曲线
+        const s = this.deps.session.get();
+        if (s) {
+          const last = s.minuteSeries[s.minuteSeries.length - 1];
+          if (last) this.deps.store.recordDaySample(this.currentPath, dateKey(new Date(now)), last);
+        }
       }
     }
     // 番茄钟（用户手动启动后计时；real=纯计时，active=仅连续活跃时计时）
@@ -274,6 +285,20 @@ export class StatsEngine {
             this.pomodoroElapsedMs = 0;
             this.pomodoroStartedAt = 0;
           }
+        }
+      }
+    }
+    // 每日目标达成通知（功能 5）：字数或时长目标首次达成且当天未通知过 → 触发回调（跨天重置）
+    if (this.deps.getSettings().goalNotify) {
+      const todayKey = dateKey(new Date());
+      if (this.goalNotifiedDate !== todayKey) {
+        const s = this.deps.getSettings();
+        const g = this.deps.store.getGlobalStats();
+        const wordDone = s.dailyWordGoal > 0 && (g.dailyGrossByDate[todayKey] ?? 0) >= s.dailyWordGoal;
+        const timeDone = s.dailyTimeGoalMin > 0 && (g.dailyActiveByDate[todayKey] ?? 0) >= s.dailyTimeGoalMin * 60_000;
+        if (wordDone || timeDone) {
+          this.goalNotifiedDate = todayKey;
+          this.deps.onGoalDue();
         }
       }
     }
