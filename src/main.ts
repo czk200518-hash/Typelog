@@ -395,7 +395,8 @@ export default class TypeLogPlugin extends Plugin {
   ) {
     const data = {
       exportedAt: new Date().toISOString(),
-      global: this.store.getGlobalStats(),
+      // JSON 导出格式的全局数据键固定为 "global"（历史兼容），计算属性避免裸标识符
+      ["global"]: this.store.getGlobalStats(),
       project: this.store.getProjectStats(),
       files: this.store.getAllFileStats(),
     };
@@ -409,7 +410,7 @@ export default class TypeLogPlugin extends Plugin {
         : format === "md"
           ? buildMarkdownReport(
               {
-                global: this.store.getGlobalStats(),
+                globalStats: this.store.getGlobalStats(),
                 files: this.filterExistingFiles(this.store.getAllFileStats()),
                 pluginVersion: this.manifest.version,
                 vaultName: this.app.vault.getName(),
@@ -464,7 +465,8 @@ export default class TypeLogPlugin extends Plugin {
       data: {
         fileStats: Object.fromEntries(this.store.getAllFileStats().map((f) => [f.path, f])),
         project: this.store.getProjectStats(),
-        global: this.store.getGlobalStats(),
+        // .typelog 备份格式的全局数据键固定为 "global"（历史兼容），计算属性避免裸标识符
+        ["global"]: this.store.getGlobalStats(),
         settings: this.settings,
       },
     };
@@ -493,7 +495,8 @@ export default class TypeLogPlugin extends Plugin {
     if (!content) throw new Error(t("notice.importReadFail"));
     let parsed: { format?: unknown; version?: unknown; data?: unknown };
     try {
-      parsed = JSON.parse(content);
+      // JSON.parse 返回 any：先断言 unknown 再收窄，避免 no-unsafe-assignment 告警
+      parsed = JSON.parse(content) as unknown as { format?: unknown; version?: unknown; data?: unknown };
     } catch {
       throw new Error(t("notice.importInvalid"));
     }
@@ -507,7 +510,8 @@ export default class TypeLogPlugin extends Plugin {
       console.error("[TypeLog] 导入前自动备份失败：", e);
     }
 
-    const data = (parsed.data ?? {}) as { fileStats?: unknown; project?: unknown; global?: unknown; settings?: unknown };
+    // .typelog 备份格式的全局数据键为 "global"（历史兼容）；fileStats/project 直接读取
+    const data = (parsed.data ?? {}) as { fileStats?: unknown; project?: unknown; settings?: unknown };
     this.store.applyImport(data, mode, this.getVaultBasePath());
 
     if (restoreSettings && data.settings && typeof data.settings === "object") {
