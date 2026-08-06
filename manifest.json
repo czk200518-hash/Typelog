@@ -1,9 +1,9 @@
 {
   "id": "typelog",
   "name": "TypeLog",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "minAppVersion": "1.8.7",
-  "description": "Typing statistics: net vs total input, active time, speed, heatmap, goals.",
+  "description": "Typing stats for Obsidian: net vs gross words, active time, speed, goals, heatmap, trends and reports.",
   "author": "8&6",
   "authorUrl": "",
   "isDesktopOnly": false
