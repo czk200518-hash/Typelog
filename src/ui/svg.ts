@@ -14,6 +14,14 @@ function svgEl(tag: string, attrs: Record<string, string> = {}, text?: string): 
   return node;
 }
 
+// 标签位置适配：居中文字靠近绘图区左/右边界时改 start/end 对齐并向内夹紧，
+// 避免文字一半超出 SVG 视口被裁剪（SVG 默认 overflow:hidden）
+function fitLabelX(cx: number, padL: number, padR: number, width: number, threshold = 20): { x: number; anchor: string } {
+  if (cx < padL + threshold) return { x: Math.max(cx, padL), anchor: "start" };
+  if (cx > width - padR - threshold) return { x: Math.min(cx, width - padR), anchor: "end" };
+  return { x: cx, anchor: "middle" };
+}
+
 export interface ChartPoint {
   x: number;
   y: number;
@@ -31,7 +39,7 @@ export function renderLineChart(container: HTMLElement, points: ChartPoint[], op
   const height = opts.height ?? 120;
   const padL = 36;
   const padR = 10;
-  const padT = 10;
+  const padT = 16;
   const padB = 20;
   const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, xmlns: SVG_NS });
 
@@ -85,7 +93,8 @@ export function renderLineChart(container: HTMLElement, points: ChartPoint[], op
     const idx = Math.round((maxIdx * i) / xTicks);
     const x = mapX(points[idx].x);
     svg.appendChild(svgEl("line", { x1: x.toFixed(1), y1: String(padT), x2: x.toFixed(1), y2: String(height - padB), stroke: "var(--background-modifier-border)", "stroke-width": "1", "stroke-dasharray": "3,3" }));
-    svg.appendChild(svgEl("text", { x: x.toFixed(1), y: String(height - padB + 12), "text-anchor": "middle", fill: "var(--text-muted)", "font-size": "8" }, t("svg.xMinute", { n: idx })));
+    const tick = fitLabelX(x, padL, padR, width);
+    svg.appendChild(svgEl("text", { x: tick.x.toFixed(1), y: String(height - padB + 12), "text-anchor": tick.anchor, fill: "var(--text-muted)", "font-size": "8" }, t("svg.xMinute", { n: idx })));
   }
   // X 轴轴线
   svg.appendChild(svgEl("line", { x1: String(padL), y1: String(height - padB), x2: String(width - padR), y2: String(height - padB), stroke: "var(--background-modifier-border)", "stroke-width": "1" }));
@@ -107,7 +116,10 @@ export function renderLineChart(container: HTMLElement, points: ChartPoint[], op
       maxAt = i;
     }
   });
-  svg.appendChild(svgEl("text", { x: mapX(points[maxAt].x).toFixed(1), y: (mapY(maxVal) - 6).toFixed(1), "text-anchor": "middle", fill: "var(--interactive-accent)", "font-size": "9", "font-weight": "700" }, String(Math.round(maxVal))));
+  // 峰值标注：位于峰值点上方，顶部不越界；左右边缘自动改对齐方向，避免数字被裁切
+  const peakY = Math.max(mapY(maxVal) - 6, padT - 4);
+  const peak = fitLabelX(mapX(points[maxAt].x), padL, padR, width);
+  svg.appendChild(svgEl("text", { x: peak.x.toFixed(1), y: peakY.toFixed(1), "text-anchor": peak.anchor, fill: "var(--interactive-accent)", "font-size": "9", "font-weight": "700" }, String(Math.round(maxVal))));
 
   if (opts.label) svg.appendChild(svgEl("text", { x: String(padL), y: String(padT - 2), fill: "var(--text-muted)", "font-size": "9" }, opts.label));
 
@@ -177,11 +189,96 @@ export function renderHeatmap(container: HTMLElement, opts: HeatmapOptions): voi
   container.appendChild(svg);
 }
 
+// 每日柱状图数据点（趋势页）：label 为短日期（如 08-01），value 为指标值
+export interface BarPoint {
+  label: string;
+  value: number;
+}
+
+export interface BarChartOptions {
+  width?: number;
+  height?: number;
+  label?: string;
+}
+
+// 每日柱状图（周/月趋势）：Y 轴 4 档网格线，柱体高度按最大值等比；
+// 最后一根（今天）高亮为绿色，其余为主题色；X 轴标签稀疏显示避免重叠
+export function renderBarChart(container: HTMLElement, points: BarPoint[], opts: BarChartOptions = {}): void {
+  const width = opts.width ?? 320;
+  const height = opts.height ?? 140;
+  const padL = 36;
+  const padR = 8;
+  const padT = 18;
+  const padB = 18;
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, xmlns: SVG_NS });
+
+  if (points.length === 0) {
+    svg.appendChild(svgEl("text", { x: String(width / 2), y: String(height / 2), "text-anchor": "middle", fill: "var(--text-muted)", "font-size": "11" }, t("svg.noData")));
+    container.appendChild(svg);
+    return;
+  }
+
+  let maxV = 0;
+  for (const p of points) if (p.value > maxV) maxV = p.value;
+  if (maxV <= 0) maxV = 1;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+  const n = points.length;
+  const slot = plotW / n;
+  const barW = Math.max(2, Math.min(18, slot * 0.6));
+  const gap = slot - barW;
+
+  // Y 轴网格线 + 刻度（4 档）
+  const yTicks = 4;
+  for (let i = 0; i <= yTicks; i++) {
+    const val = (maxV * i) / yTicks;
+    const y = padT + plotH - (plotH * i) / yTicks;
+    svg.appendChild(svgEl("line", { x1: String(padL), y1: y.toFixed(1), x2: String(width - padR), y2: y.toFixed(1), stroke: "var(--background-modifier-border)", "stroke-width": "1", "stroke-dasharray": "3,3" }));
+    svg.appendChild(svgEl("text", { x: String(padL - 4), y: (y + 3).toFixed(1), "text-anchor": "end", fill: "var(--text-muted)", "font-size": "8" }, String(Math.round(val))));
+  }
+  svg.appendChild(svgEl("line", { x1: String(padL), y1: String(padT), x2: String(padL), y2: String(height - padB), stroke: "var(--background-modifier-border)", "stroke-width": "1" }));
+
+  // 柱体：最后一根（今天）高亮；悬停 title 显示 日期:数值
+  const labelStep = Math.max(1, Math.ceil(n / 8));
+  // 柱顶数值标签的稀疏间隔：7 天全显示，30 天间隔约 5 根显示一次，避免数字重叠
+  const numStep = Math.max(1, Math.ceil(n / 12));
+  points.forEach((p, i) => {
+    const x = padL + i * slot + gap / 2;
+    const barH = (p.value / maxV) * plotH;
+    const y = padT + plotH - barH;
+    const isToday = i === n - 1;
+    const rect = svgEl("rect", {
+      x: x.toFixed(1),
+      y: y.toFixed(1),
+      width: barW.toFixed(1),
+      height: Math.max(0.5, barH).toFixed(1),
+      rx: "1.5",
+      fill: isToday ? "var(--color-green)" : "var(--interactive-accent)",
+      opacity: isToday ? "1" : "0.75",
+    });
+    rect.setAttribute("title", `${p.label}: ${Math.round(p.value)}`);
+    svg.appendChild(rect);
+    // 柱顶数值标签：非零值 + 稀疏显示 + 顶部保护；边缘自动改对齐方向避免数字被裁切
+    if (p.value > 0 && (i % numStep === 0 || isToday)) {
+      const labelY = Math.max(y - 3, padT - 5);
+      const num = fitLabelX(x + barW / 2, padL, padR, width, 24);
+      svg.appendChild(svgEl("text", { x: num.x.toFixed(1), y: labelY.toFixed(1), "text-anchor": num.anchor, fill: isToday ? "var(--color-green)" : "var(--text-muted)", "font-size": "8" }, String(Math.round(p.value))));
+    }
+    if (i % labelStep === 0 || i === n - 1) {
+      const day = fitLabelX(x + barW / 2, padL, padR, width, 24);
+      svg.appendChild(svgEl("text", { x: day.x.toFixed(1), y: String(height - padB + 12), "text-anchor": day.anchor, fill: "var(--text-muted)", "font-size": "8" }, p.label));
+    }
+  });
+
+  if (opts.label) svg.appendChild(svgEl("text", { x: String(padL), y: String(padT - 3), fill: "var(--text-muted)", "font-size": "9" }, opts.label));
+
+  container.appendChild(svg);
+}
+
 // 进度环增量更新句柄：仅更新进度弧/百分比文字/超 100% 配色，不重建节点
 export interface RingProgressHandle {
   setProgress(ratio: number): void;
 }
-
 // 每日目标环形进度条（可超过 100%，文字显示实际百分比）
 // 返回句柄供增量更新（不传则忽略，向后兼容）
 export function renderRingProgress(container: HTMLElement, ratio: number, label: string, size = 72): RingProgressHandle {
