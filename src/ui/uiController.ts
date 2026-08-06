@@ -32,6 +32,13 @@ export class UiController {
     }
   }
 
+  // 状态栏显示项变更后重建（功能 8）：先销毁再构建，避免 build() 防重入跳过
+  rebuildStatusBar() {
+    if (!this.plugin.settings.showStatusBar) return;
+    this.statusBar.destroy();
+    this.statusBar.build();
+  }
+
   // 语言切换后立即生效：重建状态栏、统计面板，使文本按新语言显示
   applyLanguage() {
     // build() 有防重入保护，语言切换需先销毁再重建以更新文本
