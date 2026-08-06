@@ -1,7 +1,7 @@
 {
   "name": "obsidian-typelog",
-  "version": "1.0.8",
-  "description": "Typing stats for Obsidian: net vs gross words, active time, speed, goals, heatmap, trends and reports.",
+  "version": "1.0.9",
+  "description": "Typing stats: net vs gross words, active time, speed, goals, heatmap, trends and reports.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
