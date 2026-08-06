@@ -1,6 +1,6 @@
 // 格式化工具函数测试：默认导出文件名与文件名清洗
 import { describe, it, expect } from "vitest";
-import { defaultExportName, formatMinutesSeconds, parseMinutesSeconds, safeFileName } from "../src/core/format";
+import { defaultExportName, formatMinutesSeconds, parseMinutesSeconds, safeFileName, weekKeys, weekSum } from "../src/core/format";
 
 describe("导出文件名工具", () => {
   it("defaultExportName 生成 typelog-YYYY-MM-DD-HHMMSS 格式", () => {
@@ -69,5 +69,38 @@ describe("parseMinutesSeconds 时长输入解析", () => {
     expect(parseMinutesSeconds("")).toBe(null);
     expect(parseMinutesSeconds("abc")).toBe(null);
     expect(parseMinutesSeconds("1分60秒")).toBe(null);
+  });
+});
+
+describe("weekKeys / weekSum 周聚合（功能 7）", () => {
+  // 2026-08-06 是周四，本周一为 08-03，周日为 08-09
+  const THU = new Date(2026, 7, 6, 14, 30);
+
+  it("weekKeys：周一至周日（含周日）", () => {
+    expect(weekKeys(THU)).toEqual(["2026-08-03", "2026-08-04", "2026-08-05", "2026-08-06", "2026-08-07", "2026-08-08", "2026-08-09"]);
+  });
+
+  it("周一当天：本周从当天开始", () => {
+    const MON = new Date(2026, 7, 3);
+    expect(weekKeys(MON)[0]).toBe("2026-08-03");
+    expect(weekKeys(MON)[6]).toBe("2026-08-09");
+  });
+
+  it("周日当天：本周仍从周一算起", () => {
+    const SUN = new Date(2026, 7, 9);
+    expect(weekKeys(SUN)[0]).toBe("2026-08-03");
+    expect(weekKeys(SUN)[6]).toBe("2026-08-09");
+  });
+
+  it("weekSum：只累计本周键，跨周数据不计入", () => {
+    const map: Record<string, number> = {
+      "2026-08-03": 100,
+      "2026-08-06": 50,
+      "2026-08-09": 30,
+      // 上周日与下周一分界数据不应计入
+      "2026-08-02": 9999,
+      "2026-08-10": 9999,
+    };
+    expect(weekSum(map, THU)).toBe(180);
   });
 });
