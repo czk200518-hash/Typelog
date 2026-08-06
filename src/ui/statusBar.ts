@@ -1,17 +1,20 @@
 // 状态栏控件 + 点击弹出的详情卡片
-// 状态栏显示：当前速度 | 净字数 | 今日总输入量
+// 状态栏显示项由设置驱动（功能 8）：顺序 = 设置数组顺序，仅渲染已启用项；
+// 「goal」项（优化 4）：迷你进度条 + 百分比数字，仅字数目标，目标为 0 时隐藏
 import { Modal, setIcon } from "obsidian";
 import type TypeLogPlugin from "../main";
-import { dateKey, formatDuration, formatNumber, pad2 } from "../core/format";
+import type { StatusBarItemId } from "../core/settings";
+import { dateKey, formatDuration, formatNumber, pad2, weekSum } from "../core/format";
 import { renderRingProgress, type RingProgressHandle } from "./svg";
 import { t } from "../core/i18n";
 
 export class StatusBarController {
   private el!: HTMLElement;
-  private speedEl!: HTMLElement;
-  private netEl!: HTMLElement;
-  private todayEl!: HTMLElement;
-  private pomodoroEl!: HTMLElement;
+  // 各显示项的外层节点（构建时按设置顺序创建，刷新时仅 setText/属性）
+  private itemEls: Partial<Record<StatusBarItemId, HTMLElement>> = {};
+  // goal 项内部节点（进度条填充 + 百分比文本）
+  private goalFillEl: HTMLElement | null = null;
+  private goalTextEl: HTMLElement | null = null;
   private lastRender = 0;
   private built = false;
 
@@ -24,21 +27,33 @@ export class StatusBarController {
   build() {
     if (this.built) return;
     this.built = true;
+    this.itemEls = {};
+    this.goalFillEl = null;
+    this.goalTextEl = null;
     this.el = this.plugin.addStatusBarItem();
     this.el.addClass("typelog-statusbar");
     this.el.title = t("brand.statusbarTitle");
 
-    this.speedEl = this.el.createSpan({ cls: "typelog-sb-speed" });
-    this.netEl = this.el.createSpan({ cls: "typelog-sb-net" });
-    this.todayEl = this.el.createSpan({ cls: "typelog-sb-today" });
-
-    // 番茄钟入口：点击开始/停止（独立于详情弹窗）
-    this.pomodoroEl = this.el.createSpan({ cls: "typelog-sb-pomodoro" });
-    this.pomodoroEl.title = t("sb.pomo.clickTitle");
-    this.pomodoroEl.addEventListener("click", (evt) => {
-      evt.stopPropagation();
-      this.plugin.togglePomodoro();
-    });
+    // 按设置顺序循环创建启用的显示项（goal 项内部含进度条结构）
+    for (const item of this.plugin.settings.statusBarItems) {
+      if (!item.enabled) continue;
+      const id = item.id;
+      const el = this.el.createSpan({ cls: `typelog-sb-${id}` });
+      if (id === "goal") {
+        const bar = el.createDiv({ cls: "typelog-sb-goal-bar" });
+        this.goalFillEl = bar.createDiv({ cls: "typelog-sb-goal-fill" });
+        this.goalTextEl = el.createDiv({ cls: "typelog-sb-goal-text" });
+      }
+      if (id === "pomodoro") {
+        // 番茄钟入口：点击开始/停止（独立于详情弹窗；保留既有交互）
+        el.title = t("sb.pomo.clickTitle");
+        el.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          this.plugin.togglePomodoro();
+        });
+      }
+      this.itemEls[id] = el;
+    }
 
     this.el.addEventListener("click", (evt) => {
       evt.stopPropagation();
@@ -48,7 +63,7 @@ export class StatusBarController {
     this.refresh(true);
   }
 
-  // 500ms 节流刷新
+  // 500ms 节流刷新：仅更新已启用的显示项
   refresh(force = false) {
     if (!this.built) return;
     const now = Date.now();
@@ -57,15 +72,46 @@ export class StatusBarController {
 
     const engine = this.plugin.engine;
     const session = this.plugin.session.get();
-    const cpm = engine?.getCpm() ?? 0;
-    this.speedEl.setText(t("sb.speed", { n: formatNumber(cpm) }));
+    const globalStats = this.plugin.store.getGlobalStats();
+    const todayKey = dateKey(new Date());
+    const set = (id: StatusBarItemId, text: string) => {
+      const el = this.itemEls[id];
+      if (el) el.setText(text);
+    };
+
+    set("speed", t("sb.speed", { n: formatNumber(engine?.getCpm() ?? 0) }));
+    set("wpm", `WPM ${Math.round(engine?.getWpm() ?? 0)}`);
 
     const netWords = session ? session.netStartWords + session.deltaWords : 0;
-    this.netEl.setText(t("sb.net", { n: formatNumber(netWords) }));
+    set("net", t("sb.net", { n: formatNumber(netWords) }));
 
-    const todayKey = dateKey(new Date());
-    const todayGross = this.plugin.store?.getGlobalStats().dailyGrossByDate[todayKey] ?? 0;
-    this.todayEl.setText(t("sb.today", { n: formatNumber(todayGross) }));
+    set("todayGross", t("sb.today", { n: formatNumber(globalStats.dailyGrossByDate[todayKey] ?? 0) }));
+    set("todayActive", formatDuration(globalStats.dailyActiveByDate[todayKey] ?? 0));
+
+    // 目标进度（优化 4）：进度条 + 百分比；目标为 0 时隐藏
+    const cur = engine?.getCurrentPath() ?? null;
+    set("fileGross", cur ? formatNumber(this.plugin.store.getFileStats(cur)?.grossTyped ?? 0) : "");
+
+    const goal = this.plugin.settings.dailyWordGoal;
+    if (goal > 0) {
+      const todayGross = globalStats.dailyGrossByDate[todayKey] ?? 0;
+      const ratio = todayGross / goal;
+      const pct = Math.round(ratio * 100);
+      this.goalFillEl?.setCssProps({ width: `${Math.min(100, Math.max(0, ratio * 100)).toFixed(1)}%` });
+      this.goalTextEl?.setText(pct > 100 ? `${pct}%+` : `${pct}%`);
+      const goalEl = this.itemEls.goal;
+      goalEl?.removeClass("typelog-sb-goal-hidden");
+      if (goalEl) {
+        goalEl.title = t("sb.goalTitle", {
+          words: formatNumber(todayGross),
+          goal: formatNumber(goal),
+          active: formatDuration(globalStats.dailyActiveByDate[todayKey] ?? 0),
+          timeGoal: this.plugin.settings.dailyTimeGoalMin,
+        });
+      }
+    } else if (this.itemEls.goal) {
+      this.itemEls.goal.addClass("typelog-sb-goal-hidden");
+    }
 
     this.renderPomodoro();
   }
@@ -73,13 +119,14 @@ export class StatusBarController {
   // 番茄钟显示：未开始 → “🍅 开始”；运行中 → “🍅 mm:ss”倒计时
   private renderPomodoro() {
     const engine = this.plugin.engine;
-    if (!engine) return;
+    const el = this.itemEls.pomodoro;
+    if (!engine || !el) return;
     if (!this.plugin.settings.pomodoroEnabled) {
-      this.pomodoroEl.setText("");
-      this.pomodoroEl.removeClass("typelog-sb-pomodoro-running");
-      this.pomodoroEl.removeClass("typelog-sb-pomodoro-idle");
-      this.pomodoroEl.removeClass("typelog-sb-pomodoro-paused");
-      this.pomodoroEl.title = t("sb.pomo.disabledTitle");
+      el.setText("");
+      el.removeClass("typelog-sb-pomodoro-running");
+      el.removeClass("typelog-sb-pomodoro-idle");
+      el.removeClass("typelog-sb-pomodoro-paused");
+      el.title = t("sb.pomo.disabledTitle");
       return;
     }
     if (engine.isPomodoroRunning()) {
@@ -88,24 +135,24 @@ export class StatusBarController {
       const m = Math.floor(totalSec / 60);
       const s = totalSec % 60;
       if (engine.isPomodoroPaused()) {
-        this.pomodoroEl.setText(`🍅 ⏸ ${m}:${pad2(s)}`);
-        this.pomodoroEl.addClass("typelog-sb-pomodoro-paused");
-        this.pomodoroEl.removeClass("typelog-sb-pomodoro-running");
-        this.pomodoroEl.removeClass("typelog-sb-pomodoro-idle");
-        this.pomodoroEl.title = t("sb.pomo.pausedTitle", { t: `${m}:${pad2(s)}` });
+        el.setText(`🍅 ⏸ ${m}:${pad2(s)}`);
+        el.addClass("typelog-sb-pomodoro-paused");
+        el.removeClass("typelog-sb-pomodoro-running");
+        el.removeClass("typelog-sb-pomodoro-idle");
+        el.title = t("sb.pomo.pausedTitle", { t: `${m}:${pad2(s)}` });
       } else {
-        this.pomodoroEl.setText(`🍅 ${m}:${pad2(s)}`);
-        this.pomodoroEl.addClass("typelog-sb-pomodoro-running");
-        this.pomodoroEl.removeClass("typelog-sb-pomodoro-paused");
-        this.pomodoroEl.removeClass("typelog-sb-pomodoro-idle");
-        this.pomodoroEl.title = t("sb.pomo.runningTitle", { t: `${m}:${pad2(s)}` });
+        el.setText(`🍅 ${m}:${pad2(s)}`);
+        el.addClass("typelog-sb-pomodoro-running");
+        el.removeClass("typelog-sb-pomodoro-paused");
+        el.removeClass("typelog-sb-pomodoro-idle");
+        el.title = t("sb.pomo.runningTitle", { t: `${m}:${pad2(s)}` });
       }
     } else {
-      this.pomodoroEl.setText(t("sb.pomo.start"));
-      this.pomodoroEl.addClass("typelog-sb-pomodoro-idle");
-      this.pomodoroEl.removeClass("typelog-sb-pomodoro-running");
-      this.pomodoroEl.removeClass("typelog-sb-pomodoro-paused");
-      this.pomodoroEl.title = t("sb.pomo.idleTitle");
+      el.setText(t("sb.pomo.start"));
+      el.addClass("typelog-sb-pomodoro-idle");
+      el.removeClass("typelog-sb-pomodoro-running");
+      el.removeClass("typelog-sb-pomodoro-paused");
+      el.title = t("sb.pomo.idleTitle");
     }
   }
 
@@ -113,6 +160,7 @@ export class StatusBarController {
     if (!this.built) return;
     this.built = false;
     this.el?.remove();
+    this.itemEls = {};
   }
 }
 
@@ -140,6 +188,11 @@ export class StatusBarDetailModal extends Modal {
   private wordRingSubEl!: HTMLElement;
   private timeRing!: RingProgressHandle;
   private timeRingSubEl!: HTMLElement;
+  // 周目标环（功能 7；对应目标为 0 时不构建）
+  private weekWordRing: RingProgressHandle | null = null;
+  private weekWordRingSubEl: HTMLElement | null = null;
+  private weekTimeRing: RingProgressHandle | null = null;
+  private weekTimeRingSubEl: HTMLElement | null = null;
 
   constructor(private plugin: TypeLogPlugin) {
     super(plugin.app);
@@ -207,6 +260,19 @@ export class StatusBarDetailModal extends Modal {
     const timeGoal = this.goalItem(goals, 0, t("modal.timeGoalRing"), t("modal.timeGoalLabel"), "");
     this.timeRing = timeGoal.ring;
     this.timeRingSubEl = timeGoal.subEl;
+
+    // 周目标环（仅启用时构建）
+    const settings = this.plugin.settings;
+    if (settings.weeklyWordGoal > 0) {
+      const weekWord = this.goalItem(goals, 0, t("modal.weekWordGoalRing"), t("modal.weekWordLabel"), "");
+      this.weekWordRing = weekWord.ring;
+      this.weekWordRingSubEl = weekWord.subEl;
+    }
+    if (settings.weeklyTimeGoalMin > 0) {
+      const weekTime = this.goalItem(goals, 0, t("modal.weekTimeGoalRing"), t("modal.weekTimeLabel"), "");
+      this.weekTimeRing = weekTime.ring;
+      this.weekTimeRingSubEl = weekTime.subEl;
+    }
   }
 
   // 每秒增量更新：只 setText 数值节点 + 更新进度环属性
@@ -246,6 +312,18 @@ export class StatusBarDetailModal extends Modal {
     this.wordRingSubEl.setText(`${formatNumber(todayWords)} / ${formatNumber(settings.dailyWordGoal)}`);
     this.timeRing.setProgress(timeRatio);
     this.timeRingSubEl.setText(`${formatDuration(todayMs)} / ${t("modal.minutesUnit", { n: settings.dailyTimeGoalMin })}`);
+
+    // 周目标环增量更新
+    if (this.weekWordRing && this.weekWordRingSubEl && settings.weeklyWordGoal > 0) {
+      const weekWords = weekSum(globalStats.dailyGrossByDate);
+      this.weekWordRing.setProgress(weekWords / settings.weeklyWordGoal);
+      this.weekWordRingSubEl.setText(`${formatNumber(weekWords)} / ${formatNumber(settings.weeklyWordGoal)}`);
+    }
+    if (this.weekTimeRing && this.weekTimeRingSubEl && settings.weeklyTimeGoalMin > 0) {
+      const weekMs = weekSum(globalStats.dailyActiveByDate);
+      this.weekTimeRing.setProgress(weekMs / (settings.weeklyTimeGoalMin * 60_000));
+      this.weekTimeRingSubEl.setText(`${formatDuration(weekMs)} / ${t("modal.minutesUnit", { n: settings.weeklyTimeGoalMin })}`);
+    }
   }
 
   private group(container: HTMLElement, title: string, icon: string) {
