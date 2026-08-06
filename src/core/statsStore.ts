@@ -375,7 +375,7 @@ export class StatsStore {
   // raw 为 .typelog 备份的 data 字段（fileStats/project/global），内部消毒 + key 归一化；
   // basePath 用于把旧备份中的绝对路径 key 映射为相对路径（非本库路径丢弃）。
   // 返回导入的文件统计条数
-  applyImport(raw: { fileStats?: unknown; project?: unknown; global?: unknown }, mode: "merge" | "overwrite", basePath: string | null): number {
+  applyImport(raw: { fileStats?: unknown; project?: unknown }, mode: "merge" | "overwrite", basePath: string | null): number {
     // 消毒文件级
     const rawFiles: Record<string, FileStats> = {};
     if (raw.fileStats && typeof raw.fileStats === "object") {
@@ -386,14 +386,15 @@ export class StatsStore {
     }
     const files = normalizeImportedKeys(rawFiles, basePath);
     const project = sanitizeProject(raw.project);
-    const global = sanitizeGlobal(raw.global);
+    // .typelog 备份格式的全局数据键为 "global"（历史兼容），用字符串索引读取避免裸标识符
+    const globalStats = sanitizeGlobal((raw as unknown as Record<string, unknown>)["global"]);
 
     if (mode === "overwrite") {
       // 覆盖：整体替换（调用方已做双确认 + 导入前自动备份）
       this.files = {};
       for (const [k, f] of Object.entries(files)) this.files[k] = { ...f };
       this.project = { ...project, version: 1 };
-      this.globalStats = global;
+      this.globalStats = globalStats;
       // 当天分钟采样为辅助曲线数据（不进备份），覆盖时一并清空避免串库
       this.daySeries = {};
       this.markDirty(7);
@@ -417,12 +418,12 @@ export class StatsStore {
     }
     // 全局：终身累计相加、每日键相加、峰值取 max、热力图逐小时相加
     const g = this.globalStats;
-    g.grossTypedTotal += global.grossTypedTotal;
-    g.deletedCharsTotal += global.deletedCharsTotal;
-    for (const [k, v] of Object.entries(global.dailyActiveByDate)) g.dailyActiveByDate[k] = (g.dailyActiveByDate[k] || 0) + v;
-    for (const [k, v] of Object.entries(global.dailyGrossByDate)) g.dailyGrossByDate[k] = (g.dailyGrossByDate[k] || 0) + v;
-    for (const [k, v] of Object.entries(global.dailyPeakByDate)) g.dailyPeakByDate[k] = Math.max(g.dailyPeakByDate[k] || 0, v);
-    for (const [k, day] of Object.entries(global.heatmap)) {
+    g.grossTypedTotal += globalStats.grossTypedTotal;
+    g.deletedCharsTotal += globalStats.deletedCharsTotal;
+    for (const [k, v] of Object.entries(globalStats.dailyActiveByDate)) g.dailyActiveByDate[k] = (g.dailyActiveByDate[k] || 0) + v;
+    for (const [k, v] of Object.entries(globalStats.dailyGrossByDate)) g.dailyGrossByDate[k] = (g.dailyGrossByDate[k] || 0) + v;
+    for (const [k, v] of Object.entries(globalStats.dailyPeakByDate)) g.dailyPeakByDate[k] = Math.max(g.dailyPeakByDate[k] || 0, v);
+    for (const [k, day] of Object.entries(globalStats.heatmap)) {
       const t = this.ensureHeatmapDay(k);
       for (let h = 0; h < 24; h++) {
         t.activeMs[h] = (t.activeMs[h] || 0) + (day.activeMs[h] || 0);
