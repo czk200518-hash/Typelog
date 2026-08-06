@@ -1,19 +1,30 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import type TypeLogPlugin from "../main";
-import { dateKey, formatDuration, formatNumber, pad2 } from "../core/format";
-import { renderLineChart, renderHeatmap, renderRingProgress, type RingProgressHandle } from "./svg";
+import { dateKey, formatDuration, formatNumber, pad2, weekSum } from "../core/format";
+import { renderBarChart, renderLineChart, renderHeatmap, renderRingProgress, type BarPoint, type RingProgressHandle } from "./svg";
 import { t } from "../core/i18n";
 
 export const VIEW_TYPE_TYPELOG = "typelog-dashboard";
 
-// 热力图格颜色（与 svg.ts renderHeatmap 内部分级一致，供增量更新今日格 fill）
-function heatColor(minutes: number): string {
-  if (minutes <= 0) return "var(--background-modifier-border)";
-  if (minutes < 5) return "#d7f0e0";
-  if (minutes < 15) return "#a6e2ba";
-  if (minutes < 30) return "#5cc786";
-  if (minutes < 45) return "#2ea85f";
-  return "#1d8a49";
+// 热力图 6 级色阶（与 svg.ts renderHeatmap 内部分级一致，供增量更新今日格 fill）
+const HEAT_COLORS = ["var(--background-modifier-border)", "#d7f0e0", "#a6e2ba", "#5cc786", "#2ea85f", "#1d8a49"];
+
+// 按维度把日总值映射为 0-5 级（活跃=分钟阈值；字数=字符阈值，二者量纲不同）
+function heatLevel(value: number, mode: "active" | "gross"): number {
+  if (value <= 0) return 0;
+  if (mode === "active") {
+    const minutes = value / 60_000;
+    if (minutes < 5) return 1;
+    if (minutes < 15) return 2;
+    if (minutes < 30) return 3;
+    if (minutes < 45) return 4;
+    return 5;
+  }
+  if (value < 200) return 1;
+  if (value < 500) return 2;
+  if (value < 1000) return 3;
+  if (value < 2000) return 4;
+  return 5;
 }
 
 export class DashboardView extends ItemView {
@@ -40,6 +51,11 @@ export class DashboardView extends ItemView {
   private wordLabelEl!: HTMLElement;
   private timeRing: RingProgressHandle | null = null;
   private timeLabelEl!: HTMLElement;
+  // 周目标环（功能 7；对应目标为 0 时不构建，引用为 null）
+  private weekWordRing: RingProgressHandle | null = null;
+  private weekWordLabelEl!: HTMLElement;
+  private weekTimeRing: RingProgressHandle | null = null;
+  private weekTimeLabelEl!: HTMLElement;
   // 当前文件区块
   private fileNetEl!: HTMLElement;
   private fileGrossEl!: HTMLElement;
@@ -54,6 +70,19 @@ export class DashboardView extends ItemView {
   private pomoStateCached = "";
   private pomoTimeEl: HTMLElement | null = null;
   private pomoBarFillEl!: HTMLElement;
+  // ---- 标签页结构（功能 1）：顶部标签栏 + 「今日/趋势」两页 ----
+  // 当前激活页（今日页为默认；趋势页含范围/指标切换）
+  private activeTab: "today" | "trend" = "today";
+  private tabBar!: HTMLElement;
+  private tabTodayBtn!: HTMLElement;
+  private tabTrendBtn!: HTMLElement;
+  private todayPage!: HTMLElement;
+  private trendPage!: HTMLElement;
+  // 趋势页状态：范围（天数）与指标（gross/active/peak）
+  private trendRange: 7 | 30 = 7;
+  private trendMetric: "gross" | "active" | "peak" = "gross";
+  // 热力图维度（优化 3）：active=活跃时长 / gross=字数分布
+  private heatMode: "active" | "gross" = "active";
 
   constructor(leaf: WorkspaceLeaf, private plugin: TypeLogPlugin) {
     super(leaf);
@@ -172,11 +201,11 @@ export class DashboardView extends ItemView {
     const el = this.root;
     const compact = this.isCompact;
 
-    // 编辑番茄钟时间时：只原位重建统计区块，番茄钟区块节点完全不触碰（避免移除聚焦元素导致失焦）
+    // 编辑番茄钟时间时：只原位重建统计区块，番茄钟区块节点完全不触碰（避免移除聚焦元素导致失焦）。
+    // 热力图位于趋势页，不受影响，无需重建
     if (this.timeEditing && !compact) {
       this.replaceSection(el, "typelog-section-ov", (p) => this.buildOverviewSection(p));
       this.replaceSection(el, "typelog-section-file", (p) => this.buildFileSection(p));
-      this.replaceSection(el, "typelog-section-heat", (p) => this.buildHeatmapSection(p));
       return;
     }
 
@@ -207,20 +236,61 @@ export class DashboardView extends ItemView {
     this.updateValues(now, todayKey);
   }
 
-  // 全量重建四个区块并缓存所有可变节点引用
+  // 全量重建：标签栏 + 「今日/趋势」两页，并缓存所有可变节点引用
   private fullRender(now: Date, todayKey: string, monthKey: string) {
     const el = this.root;
     this.renderTodayKey = todayKey;
     this.renderMonthKey = monthKey;
     el.empty();
     el.toggleClass("typelog-compact", false);
-    this.buildOverviewSection(el);
-    this.buildPomodoroSection(el);
-    this.buildFileSection(el);
-    this.buildHeatmapSection(el);
+    // 标签栏（精简模式不渲染，见 render() compact 分支）
+    this.buildTabBar(el);
+    // 两页容器：非激活页保留在 DOM（隐藏而非销毁），切换页时重建目标页结构
+    this.todayPage = el.createDiv({ cls: "typelog-tab-page typelog-tab-page-today" });
+    this.trendPage = el.createDiv({ cls: "typelog-tab-page typelog-tab-page-trend" });
+    this.buildOverviewSection(this.todayPage);
+    this.buildPomodoroSection(this.todayPage);
+    this.buildFileSection(this.todayPage);
+    this.buildTrendSection(this.trendPage);
+    this.buildHeatmapSection(this.trendPage);
+    this.applyTabVisibility();
     this.structureBuilt = true;
     // 全量构建已写入初始值，此处同步引用缓存并兜底刷新（幂等）
     this.updateValues(now, todayKey);
+  }
+
+  // 标签栏：两个标签按钮，切换仅 addClass/removeClass（非激活页隐藏而非销毁）
+  private buildTabBar(parent: HTMLElement) {
+    this.tabBar = parent.createDiv({ cls: "typelog-dashboard-tabs" });
+    const mkTab = (cls: string, label: string) => {
+      const btn = this.tabBar.createEl("button", { cls: `typelog-dashboard-tab ${cls}` });
+      btn.setText(label);
+      return btn;
+    };
+    this.tabTodayBtn = mkTab("typelog-tab-today", t("dash.tabToday"));
+    this.tabTrendBtn = mkTab("typelog-tab-trend", t("dash.tabTrend"));
+    this.tabTodayBtn.addEventListener("click", () => this.switchTab("today"));
+    this.tabTrendBtn.addEventListener("click", () => this.switchTab("trend"));
+  }
+
+  // 切换标签页：更新激活态与页面显隐；切到趋势页时重建趋势区块（数据可能已变化）
+  private switchTab(tab: "today" | "trend") {
+    if (this.activeTab === tab) return;
+    this.activeTab = tab;
+    this.applyTabVisibility();
+    if (tab === "trend") {
+      this.rebuildTrend();
+    } else if (this.structureBuilt) {
+      this.updateValues(new Date(), this.renderTodayKey);
+    }
+  }
+
+  // 依据当前激活页应用标签激活态与页面显隐
+  private applyTabVisibility() {
+    this.tabTodayBtn?.toggleClass("is-active", this.activeTab === "today");
+    this.tabTrendBtn?.toggleClass("is-active", this.activeTab === "trend");
+    this.todayPage?.toggleClass("is-hidden", this.activeTab !== "today");
+    this.trendPage?.toggleClass("is-hidden", this.activeTab !== "trend");
   }
 
   // 增量更新：对比引用节点直接 setText / 更新 SVG 属性，零节点重建
@@ -241,6 +311,17 @@ export class DashboardView extends ItemView {
     this.setText(this.wordLabelEl, `${formatNumber(todayGross)} / ${formatNumber(settings.dailyWordGoal)}`);
     this.timeRing?.setProgress(timeRatio);
     this.setText(this.timeLabelEl, `${formatDuration(todayActive)} / ${t("modal.minutesUnit", { n: settings.dailyTimeGoalMin })}`);
+    // 周目标环增量更新（周内累计随每日数据增长）
+    if (settings.weeklyWordGoal > 0 && this.weekWordRing) {
+      const weekWords = weekSum(globalStats.dailyGrossByDate);
+      this.weekWordRing.setProgress(weekWords / settings.weeklyWordGoal);
+      this.setText(this.weekWordLabelEl, `${formatNumber(weekWords)} / ${formatNumber(settings.weeklyWordGoal)}`);
+    }
+    if (settings.weeklyTimeGoalMin > 0 && this.weekTimeRing) {
+      const weekMs = weekSum(globalStats.dailyActiveByDate);
+      this.weekTimeRing.setProgress(weekMs / (settings.weeklyTimeGoalMin * 60_000));
+      this.setText(this.weekTimeLabelEl, `${formatDuration(weekMs)} / ${t("modal.minutesUnit", { n: settings.weeklyTimeGoalMin })}`);
+    }
 
     // 当前文件：会话状态变化（无↔有）或曲线采样长度变化时重建该区块，否则仅更新数值
     const session = this.plugin.session.get();
@@ -278,9 +359,16 @@ export class DashboardView extends ItemView {
   private updateHeatmapToday(globalStats: ReturnType<TypeLogPlugin["store"]["getGlobalStats"]>) {
     if (!this.heatTodayRect) return;
     const key = dateKey(new Date());
-    const hours = globalStats.heatmap[key];
-    const minutes = hours ? Math.round(hours.reduce((a, b) => a + (b || 0), 0) / 60_000) : 0;
-    this.heatTodayRect.setAttribute("fill", heatColor(minutes));
+    const day = globalStats.heatmap[key];
+    const level = heatLevel(this.heatDayValue(day), this.heatMode);
+    this.heatTodayRect.setAttribute("fill", HEAT_COLORS[level]);
+  }
+
+  // 热力图某日某维度的日总值（活跃毫秒或累计输入）
+  private heatDayValue(day: { activeMs: number[]; grossByHour: number[] } | undefined): number {
+    if (!day) return 0;
+    const arr = this.heatMode === "active" ? day.activeMs : day.grossByHour;
+    return (arr || []).reduce((a, b) => a + (b || 0), 0);
   }
 
   // 番茄钟增量更新：状态切换重建区块；running 态更新倒计时文本与进度条
@@ -308,12 +396,14 @@ export class DashboardView extends ItemView {
     if (el) el.setText(text);
   }
 
-  // 原地替换某个统计区块：新节点先追加到末尾，再移动到旧节点位置，保持“今日总览→番茄钟→当前文件→热力图”顺序
+  // 原地替换某个统计区块：新节点先追加到末尾，再移动到旧节点位置，保持区块顺序。
+  // 今日页区块统一在 todayPage 内查找与插入（标签页结构下 root 含标签栏与两页容器）
   private replaceSection(el: HTMLElement, cls: string, build: (parent: HTMLElement) => HTMLElement) {
-    const old = el.querySelector<HTMLElement>(`.${cls}`);
-    const fresh = build(el);
+    const scope = this.todayPage ?? el;
+    const old = scope.querySelector<HTMLElement>(`.${cls}`);
+    const fresh = build(scope);
     if (old) {
-      el.insertBefore(fresh, old);
+      scope.insertBefore(fresh, old);
       old.remove();
     }
   }
@@ -359,6 +449,24 @@ export class DashboardView extends ItemView {
     const time = goalItem(timeRatio, t("dash.timeGoal"), `${formatDuration(todayMs)} / ${t("modal.minutesUnit", { n: settings.dailyTimeGoalMin })}`);
     this.timeRing = time.handle;
     this.timeLabelEl = time.label;
+
+    // 周目标环（仅启用时构建；默认 0 不显示，避免 "0 / 0"）
+    if (settings.weeklyWordGoal > 0) {
+      const weekWords = weekSum(globalStats.dailyGrossByDate);
+      const weekWord = goalItem(weekWords / settings.weeklyWordGoal, t("dash.weekWordGoal"), `${formatNumber(weekWords)} / ${formatNumber(settings.weeklyWordGoal)}`);
+      this.weekWordRing = weekWord.handle;
+      this.weekWordLabelEl = weekWord.label;
+    }
+    if (settings.weeklyTimeGoalMin > 0) {
+      const weekMs = weekSum(globalStats.dailyActiveByDate);
+      const weekTime = goalItem(
+        weekMs / (settings.weeklyTimeGoalMin * 60_000),
+        t("dash.weekTimeGoal"),
+        `${formatDuration(weekMs)} / ${t("modal.minutesUnit", { n: settings.weeklyTimeGoalMin })}`,
+      );
+      this.weekTimeRing = weekTime.handle;
+      this.weekTimeLabelEl = weekTime.label;
+    }
     return section;
   }
 
@@ -402,11 +510,23 @@ export class DashboardView extends ItemView {
     return section;
   }
 
-  // ---- 打字热力图（GitHub 贡献图风格，当月每天） ----
+  // ---- 打字热力图（GitHub 贡献图风格，当月每天；活跃时长/字数双维度可切换） ----
   private buildHeatmapSection(parent: HTMLElement): HTMLElement {
     const globalStats = this.plugin.store.getGlobalStats();
     const section = parent.createDiv({ cls: "typelog-section typelog-section-heat" });
     section.createEl("h3", { text: t("dash.heatmap"), cls: "typelog-section-title" });
+
+    // 维度切换（活跃时长 / 字数）
+    const controls = section.createDiv({ cls: "typelog-trend-controls" });
+    const heatGroup = controls.createDiv({ cls: "typelog-trend-control-group" });
+    this.segBtn(heatGroup, this.heatMode === "active", () => {
+      this.heatMode = "active";
+      this.rebuildHeatmap();
+    }).setText(t("dash.heatActive"));
+    this.segBtn(heatGroup, this.heatMode === "gross", () => {
+      this.heatMode = "gross";
+      this.rebuildHeatmap();
+    }).setText(t("dash.heatGross"));
 
     const now = new Date();
     const year = now.getFullYear();
@@ -430,8 +550,10 @@ export class DashboardView extends ItemView {
         }
         let minutes = 0;
         if (isCurrent) {
-          const hours = globalStats.heatmap[dateKey(d)];
-          if (hours) minutes = Math.round(hours.reduce((a, b) => a + (b || 0), 0) / 60_000);
+          // 按当前维度取日总值（活跃毫秒 / 累计输入），active 模式换算为分钟供色阶使用
+          const day = globalStats.heatmap[dateKey(d)];
+          const value = this.heatDayValue(day);
+          minutes = this.heatMode === "active" ? Math.round(value / 60_000) : value;
         }
         col.push({ minutes, isCurrent });
       }
@@ -447,11 +569,103 @@ export class DashboardView extends ItemView {
 
     const legend = section.createDiv({ cls: "typelog-legend" });
     legend.createSpan().setText(t("dash.legendLess"));
-    ["var(--background-modifier-border)", "#d7f0e0", "#a6e2ba", "#5cc786", "#2ea85f", "#1d8a49"].forEach((c) => {
+    HEAT_COLORS.forEach((c) => {
       legend.createSpan({ cls: "typelog-legend-cell" }).setCssProps({ background: c });
     });
     legend.createSpan().setText(t("dash.legendMore"));
     return section;
+  }
+
+  // 重建热力图区块（维度切换时调用；热力图位于趋势页）
+  private rebuildHeatmap() {
+    if (!this.trendPage) return;
+    const old = this.trendPage.querySelector<HTMLElement>(".typelog-section-heat");
+    const fresh = this.buildHeatmapSection(this.trendPage);
+    if (old) {
+      this.trendPage.insertBefore(fresh, old);
+      old.remove();
+    }
+  }
+
+  // ---- 趋势页：每日柱状图（范围/指标切换） ----
+  private buildTrendSection(parent: HTMLElement): HTMLElement {
+    const section = parent.createDiv({ cls: "typelog-section typelog-section-trend" });
+    section.createEl("h3", { text: t("dash.trendTitle"), cls: "typelog-section-title" });
+
+    // 控件行：范围（7/30 天）+ 指标（字数/时长/速度）
+    const controls = section.createDiv({ cls: "typelog-trend-controls" });
+    const rangeGroup = controls.createDiv({ cls: "typelog-trend-control-group" });
+    rangeGroup.createDiv({ cls: "typelog-trend-group-label" }).setText(t("dash.trendRange"));
+    this.segBtn(rangeGroup, this.trendRange === 7, () => {
+      this.trendRange = 7;
+      this.rebuildTrend();
+    }).setText(t("dash.trendRange7"));
+    this.segBtn(rangeGroup, this.trendRange === 30, () => {
+      this.trendRange = 30;
+      this.rebuildTrend();
+    }).setText(t("dash.trendRange30"));
+    const metricGroup = controls.createDiv({ cls: "typelog-trend-control-group" });
+    metricGroup.createDiv({ cls: "typelog-trend-group-label" }).setText(t("dash.trendMetric"));
+    this.segBtn(metricGroup, this.trendMetric === "gross", () => {
+      this.trendMetric = "gross";
+      this.rebuildTrend();
+    }).setText(t("dash.trendGross"));
+    this.segBtn(metricGroup, this.trendMetric === "active", () => {
+      this.trendMetric = "active";
+      this.rebuildTrend();
+    }).setText(t("dash.trendActive"));
+    this.segBtn(metricGroup, this.trendMetric === "peak", () => {
+      this.trendMetric = "peak";
+      this.rebuildTrend();
+    }).setText(t("dash.trendPeak"));
+
+    // 柱状图（宽度自适应容器）
+    const chartBox = section.createDiv({ cls: "typelog-chart" });
+    const points = this.buildTrendSeries(this.trendRange, this.trendMetric);
+    if (points.length === 0) {
+      chartBox.createDiv({ cls: "typelog-empty" }).setText(t("svg.noData"));
+    } else {
+      const chartWidth = Math.max(240, (this.root.clientWidth || 320) - 20);
+      renderBarChart(chartBox.createDiv({ cls: "typelog-chart-svg" }), points, { width: chartWidth, height: 140 });
+    }
+    return section;
+  }
+
+  // 分段按钮：active 时加激活类；点击回调由调用方传入（通常重建趋势区块）
+  private segBtn(group: HTMLElement, active: boolean, onClick: () => void): HTMLElement {
+    const btn = group.createEl("button", { cls: `typelog-trend-btn${active ? " is-active" : ""}` });
+    btn.addEventListener("click", onClick);
+    return btn;
+  }
+
+  // 重建趋势区块（范围/指标切换或切回趋势页时调用；非趋势页不操作）
+  private rebuildTrend() {
+    if (!this.trendPage || this.activeTab !== "trend") return;
+    const old = this.trendPage.querySelector<HTMLElement>(".typelog-section-trend");
+    const fresh = this.buildTrendSection(this.trendPage);
+    if (old) {
+      this.trendPage.insertBefore(fresh, old);
+      old.remove();
+    }
+  }
+
+  // 构建趋势序列：近 N 天（含今天），按指标取 daily*ByDate；缺失的天补 0
+  private buildTrendSeries(days: number, metric: "gross" | "active" | "peak"): BarPoint[] {
+    const globalStats = this.plugin.store.getGlobalStats();
+    const map =
+      metric === "gross"
+        ? globalStats.dailyGrossByDate
+        : metric === "active"
+          ? globalStats.dailyActiveByDate
+          : globalStats.dailyPeakByDate;
+    const out: BarPoint[] = [];
+    const now = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const key = dateKey(d);
+      out.push({ label: key.slice(5), value: map[key] ?? 0 });
+    }
+    return out;
   }
 
   // ---- 番茄钟控制：开始/暂停/继续/停止（停止需二次确认） ----
