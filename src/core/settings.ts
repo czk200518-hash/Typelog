@@ -12,6 +12,37 @@ export type PomodoroMode = "real" | "active";
 // 界面语言
 export type UiLang = "zh" | "en";
 
+// 状态栏显示项 ID（功能 8）：8 项全量可选
+export type StatusBarItemId = "speed" | "wpm" | "net" | "todayGross" | "todayActive" | "goal" | "fileGross" | "pomodoro";
+
+// 状态栏显示项配置：有序数组，顺序即显示顺序
+export interface StatusBarItemConfig {
+  id: StatusBarItemId;
+  enabled: boolean;
+}
+
+// 全量合法 ID 白名单（设置消毒用）
+export const STATUS_BAR_ITEM_IDS: StatusBarItemId[] = ["speed", "wpm", "net", "todayGross", "todayActive", "goal", "fileGross", "pomodoro"];
+
+// 默认显示项：在 v1.0.7 现状（速度 | 净字数 | 今日总输入 | 番茄钟）基础上默认启用「目标进度」，
+// 老用户设置文件缺 goal 项时由 sanitizeSettings 自动补齐（见 main.ts）
+export const DEFAULT_STATUS_BAR_ITEMS: StatusBarItemConfig[] = [
+  { id: "speed", enabled: true },
+  { id: "net", enabled: true },
+  { id: "todayGross", enabled: true },
+  { id: "goal", enabled: true },
+  { id: "pomodoro", enabled: true },
+];
+
+// 重排状态栏显示项数组（功能 8 拖拽/按钮共用；边界外返回原数组）
+export function reorderStatusBarItems(items: StatusBarItemConfig[], from: number, to: number): StatusBarItemConfig[] {
+  if (from < 0 || from >= items.length || to < 0 || to >= items.length || from === to) return items;
+  const next = [...items];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
 export interface TypeLogSettings {
   // 界面语言（默认中文，切换后立即生效并持久化）
   language: UiLang;
@@ -27,6 +58,12 @@ export interface TypeLogSettings {
   dailyWordGoal: number;
   // 今日目标时长（分钟）
   dailyTimeGoalMin: number;
+  // 周目标字数（功能 7，0=不启用）
+  weeklyWordGoal: number;
+  // 周目标时长（分钟，0=不启用）
+  weeklyTimeGoalMin: number;
+  // 每日目标达成时弹出通知（功能 5，每天一次）
+  goalNotify: boolean;
   // 番茄钟提醒开关
   pomodoroEnabled: boolean;
   // 番茄钟时长（分钟）
@@ -43,6 +80,8 @@ export interface TypeLogSettings {
   purgeInactiveDays: number;
   // 数据清理：每日统计（daily*/heatmap）仅保留最近 N 天（0=不清理）
   dailyRetentionDays: number;
+  // 状态栏显示项（功能 8）：有序数组，顺序即显示顺序
+  statusBarItems: StatusBarItemConfig[];
 }
 
 export const DEFAULT_SETTINGS: TypeLogSettings = {
@@ -53,6 +92,10 @@ export const DEFAULT_SETTINGS: TypeLogSettings = {
   excludePatterns: ["node_modules/**", "*.min.js"],
   dailyWordGoal: 2000,
   dailyTimeGoalMin: 120,
+  // 周目标默认不启用（用户按需设置）
+  weeklyWordGoal: 0,
+  weeklyTimeGoalMin: 0,
+  goalNotify: true,
   pomodoroEnabled: true,
   pomodoroMinutes: 25,
   pomodoroMode: "active",
@@ -62,4 +105,5 @@ export const DEFAULT_SETTINGS: TypeLogSettings = {
   // 数据清理默认均不启用（涉及数据删除，需用户显式配置天数后再执行）
   purgeInactiveDays: 0,
   dailyRetentionDays: 0,
+  statusBarItems: DEFAULT_STATUS_BAR_ITEMS,
 };
