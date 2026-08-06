@@ -12,7 +12,9 @@ function countMatches(re: RegExp, text: string): number {
   let n = 0;
   const flags = re.flags.includes("g") ? re.flags : re.flags + "g";
   const r = new RegExp(re.source, flags);
-  for (const _ of text.matchAll(r)) n++;
+  // 迭代器方式计数，不构建匹配数组；不声明未使用的循环变量
+  const it = text.matchAll(r);
+  while (!it.next().done) n++;
   return n;
 }
 
@@ -22,8 +24,7 @@ export function countText(text: string, mode: CountMode): number {
     // 遍历计数非空白字符，避免 replace 生成中间字符串
     let n = 0;
     const re = /\S/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) n++;
+    while (re.exec(text) !== null) n++;
     return n;
   }
   return countMatches(CJK_REGEX, text) + countMatches(WORD_REGEX, text);
