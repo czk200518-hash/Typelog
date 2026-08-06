@@ -10,6 +10,25 @@ export function dateKey(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+// 本周（周一至周日）全部日期键（功能 7：周目标聚合口径）
+export function weekKeys(now = new Date()): string[] {
+  const keys: string[] = [];
+  const dow = (now.getDay() + 6) % 7; // 周一=0
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+    keys.push(dateKey(d));
+  }
+  return keys;
+}
+
+// 本周累计值（对每日数值映射求和，如 dailyGrossByDate）
+export function weekSum(map: Record<string, number>, now = new Date()): number {
+  let sum = 0;
+  for (const k of weekKeys(now)) sum += map[k] || 0;
+  return sum;
+}
+
 // 毫秒格式化，如 2小时 05分 或 45秒（单位随界面语言）
 export function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
