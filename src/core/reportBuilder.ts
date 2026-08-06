@@ -10,7 +10,7 @@ export type ReportRangeDays = 7 | 30;
 export type ReportRange = ReportRangeDays | "month";
 
 export interface ReportInput {
-  global: GlobalStats;
+  globalStats: GlobalStats;
   // 文件级统计（调用方应已过滤被删除文件）
   files: FileStats[];
   pluginVersion: string;
@@ -77,7 +77,7 @@ export interface ReportOptions {
 export function buildMarkdownReport(input: ReportInput, opts: ReportOptions): string {
   const now = opts.now ?? new Date();
   const keys = rangeKeys(now, opts.range);
-  const g = input.global;
+  const g = input.globalStats;
 
   // 本期聚合（总览与峰值）
   let gross = 0;
