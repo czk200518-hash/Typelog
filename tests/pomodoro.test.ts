@@ -28,6 +28,9 @@ function createEngine(pomodoroMinutes = 1, idleThresholdSec = 5) {
     excludePatterns: [],
     dailyWordGoal: 2000,
     dailyTimeGoalMin: 120,
+    weeklyWordGoal: 0,
+    weeklyTimeGoalMin: 0,
+    goalNotify: false,
     pomodoroEnabled: true,
     pomodoroMinutes,
     pomodoroMode: "active",
@@ -36,6 +39,7 @@ function createEngine(pomodoroMinutes = 1, idleThresholdSec = 5) {
     popoutAlwaysOnTop: true,
     purgeInactiveDays: 0,
     dailyRetentionDays: 0,
+    statusBarItems: [],
   };
   const deps: StatsEngineDeps = {
     workspace: {} as never,
@@ -50,6 +54,7 @@ function createEngine(pomodoroMinutes = 1, idleThresholdSec = 5) {
     isExcluded: () => false,
     onUiUpdate,
     onPomodoroDue,
+    onGoalDue: vi.fn(),
   };
   return { engine: new StatsEngine(deps), deps, onPomodoroDue, settings };
 }
