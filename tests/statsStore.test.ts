@@ -312,7 +312,8 @@ describe("StatsStore 三层存储", () => {
   });
 
   describe("applyImport 备份导入（功能 4）", () => {
-    function backupData(overrides: { fileStats?: Record<string, unknown>; global?: Record<string, unknown>; project?: unknown } = {}) {
+    // overrides 中的全局数据键用字符串字面量 "global"（模拟 .typelog 备份格式，避免裸标识符）
+    function backupData(overrides: { fileStats?: Record<string, unknown>; "global"?: Record<string, unknown>; project?: unknown } = {}) {
       const heat = new Array<number>(24).fill(0);
       heat[10] = 120_000;
       return {
@@ -320,7 +321,7 @@ describe("StatsStore 三层存储", () => {
           "笔记/a.md": { path: "笔记/a.md", grossTyped: 100, deletedChars: 5, activeTimeMs: 1000, firstSeen: 10, lastOpened: 20 },
         },
         project: { version: 1, grossTyped: 100, deletedChars: 5, activeTimeMs: 1000, updatedAt: 20 },
-        global: {
+        "global": {
           grossTypedTotal: 100,
           deletedCharsTotal: 5,
           dailyActiveByDate: { "2026-08-01": 1000 },
@@ -394,7 +395,7 @@ describe("StatsStore 三层存储", () => {
     it("损坏数据消毒：非法字段回退为 0，不污染统计", async () => {
       await store.load();
       const data = backupData({
-        global: { grossTypedTotal: "bad", deletedCharsTotal: NaN, dailyGrossByDate: { "2026-08-01": "x" }, dailyActiveByDate: {}, dailyPeakByDate: {}, heatmap: {} },
+        "global": { grossTypedTotal: "bad", deletedCharsTotal: NaN, dailyGrossByDate: { "2026-08-01": "x" }, dailyActiveByDate: {}, dailyPeakByDate: {}, heatmap: {} },
       });
       store.applyImport(data, "overwrite", null);
       expect(store.getGlobalStats().grossTypedTotal).toBe(0);
