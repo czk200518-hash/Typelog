@@ -82,7 +82,7 @@ interface GlobalStatsMock {
   dailyGrossByDate: Record<string, number>;
   dailyPeakByDate: Record<string, number>;
   grossTypedTotal: number;
-  heatmap: Record<string, number[]>;
+  heatmap: Record<string, { activeMs: number[]; grossByHour: number[] }>;
 }
 
 // ---- 模拟插件与可变数据 ----
@@ -95,6 +95,9 @@ function makePlugin() {
     excludePatterns: [],
     dailyWordGoal: 2000,
     dailyTimeGoalMin: 120,
+    weeklyWordGoal: 0,
+    weeklyTimeGoalMin: 0,
+    goalNotify: false,
     pomodoroEnabled: true,
     pomodoroMinutes: 25,
     pomodoroMode: "active",
@@ -103,6 +106,12 @@ function makePlugin() {
     popoutAlwaysOnTop: true,
     purgeInactiveDays: 0,
     dailyRetentionDays: 0,
+    statusBarItems: [
+      { id: "speed", enabled: true },
+      { id: "net", enabled: true },
+      { id: "todayGross", enabled: true },
+      { id: "pomodoro", enabled: true },
+    ],
   };
   const today = dateKey(new Date());
   const globalStats: GlobalStatsMock = {
@@ -110,7 +119,7 @@ function makePlugin() {
     dailyGrossByDate: { [today]: 0 },
     dailyPeakByDate: { [today]: 0 },
     grossTypedTotal: 0,
-    heatmap: { [today]: new Array<number>(24).fill(0) },
+    heatmap: { [today]: { activeMs: new Array<number>(24).fill(0), grossByHour: new Array<number>(24).fill(0) } },
   };
   const sessionObj = {
     netStartWords: 0,
@@ -158,7 +167,7 @@ function sectionValue(root: HTMLElement, title: string, index: number): string {
 function tickSecond(globalStats: GlobalStatsMock, sessionObj: { activeTimeMs: number }, today: string, ms = 60_000) {
   globalStats.dailyActiveByDate[today] += ms;
   sessionObj.activeTimeMs += ms;
-  globalStats.heatmap[today][0] += ms;
+  globalStats.heatmap[today].activeMs[0] += ms;
 }
 
 describe("番茄钟时间输入框编辑态下的 UI 刷新", () => {
@@ -208,11 +217,9 @@ describe("番茄钟时间输入框编辑态下的 UI 刷新", () => {
     // 3) 当前文件活跃时长同步跳动
     expect(sectionValue(root, "当前文件", 3)).toBe("3分00秒");
 
-    // 4) 编辑期间走特判路径（不触碰番茄钟区块），热力图重建并刷新今日格颜色（3 分钟 → #d7f0e0）
+    // 4) 编辑期间走特判路径（不触碰番茄钟区块）；热力图已移至趋势页，今日页编辑期间保持节点引用不重建
     const heatSvg1 = root.querySelector(".typelog-heatmap svg");
-    expect(heatSvg1).not.toBe(heatSvg0);
-    const rects = Array.from(root.querySelectorAll<SVGRectElement>(".typelog-heatmap rect"));
-    expect(rects.some((r) => r.getAttribute("fill") === "#d7f0e0")).toBe(true);
+    expect(heatSvg1).toBe(heatSvg0);
   });
 
   it("快速切换焦点（分→秒→分→失焦）编辑态稳定，失焦后刷新恢复", async () => {
