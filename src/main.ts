@@ -210,13 +210,13 @@ export default class TypeLogPlugin extends Plugin {
   }
 
   // 切换番茄钟运行状态（状态栏/设置按钮/命令触发）
-  // 运行中 → 停止（二次确认）；已暂停 → 继续；未开始 → 开始
+  // 运行中 → 直接暂停（不弹确认窗，方便状态栏快捷操作）；已暂停 → 继续；未开始 → 开始
   togglePomodoro() {
     const engine = this.engine;
     if (engine.isPomodoroPaused()) {
       this.resumePomodoro();
     } else if (engine.isPomodoroRunning()) {
-      this.confirmStopPomodoro();
+      this.pausePomodoro();
     } else {
       this.startPomodoro();
     }
@@ -495,8 +495,11 @@ export default class TypeLogPlugin extends Plugin {
     if (!content) throw new Error(t("notice.importReadFail"));
     let parsed: { format?: unknown; version?: unknown; data?: unknown };
     try {
-      // JSON.parse 返回 any：先断言 unknown 再收窄，避免 no-unsafe-assignment 告警
-      parsed = JSON.parse(content) as unknown as { format?: unknown; version?: unknown; data?: unknown };
+      // JSON.parse 返回 any：用 unknown 类型注解接收（any→unknown 安全，规避 no-unsafe-assignment），
+      // 再经运行时校验后以必要断言收窄（规避 no-unnecessary-type-assertion）
+      const raw: unknown = JSON.parse(content);
+      if (typeof raw !== "object" || raw === null) throw new Error(t("notice.importInvalid"));
+      parsed = raw as { format?: unknown; version?: unknown; data?: unknown };
     } catch {
       throw new Error(t("notice.importInvalid"));
     }
