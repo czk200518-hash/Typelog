@@ -316,17 +316,11 @@
   min-width: 0;
 }
 
-.typelog-modal-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-on-accent);
-}
-
 .typelog-modal-file {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: 13.75px;
   opacity: 0.9;
   color: var(--text-on-accent);
   max-width: 320px;
@@ -360,7 +354,7 @@
 }
 
 .typelog-modal-group-title {
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -372,11 +366,13 @@
   gap: 8px;
 }
 
-/* 指标卡片 */
+/* 指标卡片：纵向居中排版（图标色块已去除，文字居中） */
 .typelog-modal-metric {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
   padding: 10px;
   border-radius: 10px;
   border: 1px solid var(--background-modifier-border);
@@ -390,86 +386,42 @@
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
 }
 
-.typelog-modal-metric-icon {
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.typelog-modal-metric-icon svg {
-  width: 14px;
-  height: 14px;
-}
-
 .typelog-modal-metric-body {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 1px;
   min-width: 0;
 }
 
 .typelog-modal-metric-label {
-  font-size: 10px;
+  font-size: 12.5px;
   color: var(--text-muted);
   white-space: nowrap;
 }
 
 .typelog-modal-metric-value {
-  font-size: 15px;
+  font-size: 18.75px;
   font-weight: 700;
   color: var(--text-normal);
   white-space: nowrap;
 }
 
-.typelog-modal-metric-sub {
-  font-size: 9px;
-  color: var(--text-faint);
-  line-height: 1.3;
-}
-
-/* 配色（accent，提亮版） */
+/* 属性框顶部颜色标识（保留，未要求删除）；图标本身不再带色块/背景方框 */
 .typelog-modal-metric.accent-blue {
   border-top: 3px solid #3b82f6;
 }
-.typelog-modal-metric.accent-blue .typelog-modal-metric-icon {
-  background: rgba(59, 130, 246, 0.18);
-  color: #3b82f6;
-}
-
 .typelog-modal-metric.accent-green {
   border-top: 3px solid #22c55e;
 }
-.typelog-modal-metric.accent-green .typelog-modal-metric-icon {
-  background: rgba(34, 197, 94, 0.18);
-  color: #22c55e;
-}
-
 .typelog-modal-metric.accent-orange {
   border-top: 3px solid #f97316;
 }
-.typelog-modal-metric.accent-orange .typelog-modal-metric-icon {
-  background: rgba(249, 115, 22, 0.18);
-  color: #f97316;
-}
-
 .typelog-modal-metric.accent-red {
   border-top: 3px solid #ef4444;
 }
-.typelog-modal-metric.accent-red .typelog-modal-metric-icon {
-  background: rgba(239, 68, 68, 0.18);
-  color: #ef4444;
-}
-
 .typelog-modal-metric.accent-purple {
   border-top: 3px solid #a855f7;
-}
-.typelog-modal-metric.accent-purple .typelog-modal-metric-icon {
-  background: rgba(168, 85, 247, 0.18);
-  color: #a855f7;
 }
 
 /* 今日目标进度 */
@@ -499,13 +451,13 @@
 }
 
 .typelog-modal-goal-label {
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-normal);
 }
 
 .typelog-modal-goal-sub {
-  font-size: 10px;
+  font-size: 12.5px;
   color: var(--text-muted);
 }
 
