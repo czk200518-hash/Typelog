@@ -172,18 +172,14 @@ export class StatusBarDetailModal extends Modal {
   // 可变节点引用（构建时收集，刷新时仅 setText/更新属性）
   private fileEl!: HTMLElement;
   private netWordsEl!: HTMLElement;
-  private deltaEl!: HTMLElement;
   private grossEl!: HTMLElement;
   private deletedEl!: HTMLElement;
   private sessionActiveEl!: HTMLElement;
-  private idleEl!: HTMLElement;
   private fileActiveEl!: HTMLElement;
   private todayActiveEl!: HTMLElement;
   private cpmEl!: HTMLElement;
-  private wpmEl!: HTMLElement;
   private peakEl!: HTMLElement;
   private todayGrossEl!: HTMLElement;
-  private lifetimeEl!: HTMLElement;
   private wordRing!: RingProgressHandle;
   private wordRingSubEl!: HTMLElement;
   private timeRing!: RingProgressHandle;
@@ -216,41 +212,36 @@ export class StatusBarDetailModal extends Modal {
     const logo = header.createDiv({ cls: "typelog-modal-logo" });
     setIcon(logo, "bar-chart-2");
     const titleBox = header.createDiv({ cls: "typelog-modal-titlebox" });
-    titleBox.createDiv({ cls: "typelog-modal-title" }).setText(t("brand.name"));
     const fileRow = titleBox.createDiv({ cls: "typelog-modal-file" });
     setIcon(fileRow.createSpan(), "file-text");
     this.fileEl = fileRow.createSpan();
 
     // ---- 文字指标 ----
     const wordsGroup = this.group(contentEl, t("modal.wordsGroup"), "type");
-    const net = this.metric(wordsGroup, "current-net", t("modal.netWords"), "", "", "blue");
+    const net = this.metric(wordsGroup, t("modal.netWords"), "", "blue");
     this.netWordsEl = net.valueEl;
-    this.deltaEl = net.subEl!;
-    const gross = this.metric(wordsGroup, "gross-typed", t("modal.grossTyped"), "", t("modal.grossTypedSub"), "purple");
+    const gross = this.metric(wordsGroup, t("modal.grossTyped"), "", "purple");
     this.grossEl = gross.valueEl;
-    const deleted = this.metric(wordsGroup, "deleted", t("modal.deleted"), "", t("modal.deletedSub"), "red");
+    const deleted = this.metric(wordsGroup, t("modal.deleted"), "", "red");
     this.deletedEl = deleted.valueEl;
 
     // ---- 时间指标 ----
     const timeGroup = this.group(contentEl, t("modal.timeGroup"), "clock");
-    const sessionActive = this.metric(timeGroup, "session-active", t("modal.sessionActive"), "", "", "green");
+    const sessionActive = this.metric(timeGroup, t("modal.sessionActive"), "", "green");
     this.sessionActiveEl = sessionActive.valueEl;
-    this.idleEl = sessionActive.subEl!;
-    const fileActive = this.metric(timeGroup, "file-active", t("modal.fileActive"), "", t("modal.fileActiveSub"), "blue");
+    const fileActive = this.metric(timeGroup, t("modal.fileActive"), "", "blue");
     this.fileActiveEl = fileActive.valueEl;
-    const todayActive = this.metric(timeGroup, "today-active", t("modal.todayActive"), "", t("modal.todayActiveSub"), "orange");
+    const todayActive = this.metric(timeGroup, t("modal.todayActive"), "", "orange");
     this.todayActiveEl = todayActive.valueEl;
 
     // ---- 速度指标 ----
     const speedGroup = this.group(contentEl, t("modal.speedGroup"), "zap");
-    const cpm = this.metric(speedGroup, "cpm", t("modal.cpm"), "", "", "blue");
+    const cpm = this.metric(speedGroup, t("modal.cpm"), "", "blue");
     this.cpmEl = cpm.valueEl;
-    this.wpmEl = cpm.subEl!;
-    const peak = this.metric(speedGroup, "peak", t("modal.peak"), "", t("modal.peakSub"), "orange");
+    const peak = this.metric(speedGroup, t("modal.peak"), "", "orange");
     this.peakEl = peak.valueEl;
-    const todayGross = this.metric(speedGroup, "today-gross", t("modal.todayGross"), "", "", "purple");
+    const todayGross = this.metric(speedGroup, t("modal.todayGross"), "", "purple");
     this.todayGrossEl = todayGross.valueEl;
-    this.lifetimeEl = todayGross.subEl!;
 
     // ---- 今日目标进度 ----
     const goals = contentEl.createDiv({ cls: "typelog-modal-goals" });
@@ -288,21 +279,16 @@ export class StatusBarDetailModal extends Modal {
     this.fileEl.setText(path ? path.split("/").pop() ?? path : t("modal.noFile"));
 
     this.netWordsEl.setText(session ? formatNumber(session.netStartWords + session.deltaWords) : "—");
-    this.deltaEl.setText(session ? t("modal.thisSession", { n: `${session.deltaWords >= 0 ? "+" : ""}${formatNumber(session.deltaWords)}` }) : "");
     this.grossEl.setText(fileStats ? formatNumber(fileStats.grossTyped) : "—");
     this.deletedEl.setText(fileStats ? formatNumber(fileStats.deletedChars) : "—");
 
-    const spanMs = session ? Date.now() - session.openedAt : 0;
     this.sessionActiveEl.setText(session ? formatDuration(session.activeTimeMs) : "—");
-    this.idleEl.setText(session ? t("modal.idle", { d: formatDuration(Math.max(0, spanMs - session.activeTimeMs)) }) : "");
     this.fileActiveEl.setText(fileStats ? formatDuration(fileStats.activeTimeMs) : "—");
     this.todayActiveEl.setText(formatDuration(globalStats.dailyActiveByDate[todayKey] ?? 0));
 
     this.cpmEl.setText(session ? t("sb.speed", { n: formatNumber(engine?.getCpm() ?? 0) }) : "—");
-    this.wpmEl.setText(session ? `WPM ${Math.round(engine?.getWpm() ?? 0)}${t("modal.wpmSub")}` : "");
     this.peakEl.setText(session ? t("sb.speed", { n: formatNumber(session.peakSpeed) }) : "—");
     this.todayGrossEl.setText(formatNumber(globalStats.dailyGrossByDate[todayKey] ?? 0));
-    this.lifetimeEl.setText(t("modal.lifetime", { n: formatNumber(globalStats.grossTypedTotal) }));
 
     const todayWords = globalStats.dailyGrossByDate[todayKey] ?? 0;
     const todayMs = globalStats.dailyActiveByDate[todayKey] ?? 0;
@@ -334,20 +320,13 @@ export class StatusBarDetailModal extends Modal {
     return g.createDiv({ cls: "typelog-modal-group-grid" });
   }
 
-  private metric(parent: HTMLElement, icon: string, label: string, value: string, sub?: string, accent?: string): { valueEl: HTMLElement; subEl?: HTMLElement } {
+  private metric(parent: HTMLElement, label: string, value: string, accent?: string): { valueEl: HTMLElement } {
     const card = parent.createDiv({ cls: `typelog-modal-metric accent-${accent ?? "blue"}` });
-    const iconWrap = card.createDiv({ cls: "typelog-modal-metric-icon" });
-    setIcon(iconWrap, icon);
     const body = card.createDiv({ cls: "typelog-modal-metric-body" });
     body.createDiv({ cls: "typelog-modal-metric-label" }).setText(label);
     const valueEl = body.createDiv({ cls: "typelog-modal-metric-value" });
     valueEl.setText(value);
-    let subEl: HTMLElement | undefined;
-    if (sub !== undefined) {
-      subEl = body.createDiv({ cls: "typelog-modal-metric-sub" });
-      subEl.setText(sub);
-    }
-    return { valueEl, subEl };
+    return { valueEl };
   }
 
   private goalItem(goals: HTMLElement, ratio: number, ringLabel: string, label: string, sub: string): { ring: RingProgressHandle; subEl: HTMLElement } {
