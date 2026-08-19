@@ -718,7 +718,8 @@ export class DashboardView extends ItemView {
           return;
         }
         const total = mm * 60 + ss;
-        if (total <= 0) {
+        // 总时长需大于 0 且不超过 7 天（秒），否则恢复原值（上限与 parseMinutesSeconds 一致）
+        if (total <= 0 || total > 7 * 24 * 60 * 60) {
           this.render();
           return;
         }
