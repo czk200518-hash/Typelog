@@ -5,10 +5,10 @@ import type { FileStats, GlobalStats } from "../types";
 import { heatHourValue } from "./reportBuilder";
 
 // CSV 字段转义：含逗号/引号/换行时加引号包裹并双写内部引号；
-// 以 = + - @ 开头时前置单引号，防止在 Excel 中被当作公式执行（CSV 注入防护）
+// 以 = + - @ 或制表符/回车开头时前置单引号，防止在 Excel 中被当作公式执行（CSV 注入防护）
 export function csvField(v: string | number): string {
   const s = String(v);
-  const safe = /^[=+@-]/.test(s) ? "'" + s : s;
+  const safe = /^[\t\r=+@-]/.test(s) ? "'" + s : s;
   return /[",\n\r]/.test(safe) ? '"' + safe.replace(/"/g, '""') + '"' : safe;
 }
 
