@@ -5,3 +5,8 @@ main.js
 .tmp_obsidian_*.txt
 test-vault/.obsidian/workspace.json
 test-vault/.obsidian/workspace-mobile.json
+# 发布/部署脚本含本机凭据与个人路径，禁止入库（token 一律走环境变量 GITHUB_TOKEN）
+upload.ps1
+scripts/reupload.ps1
+upload.bat
+deploy.bat
