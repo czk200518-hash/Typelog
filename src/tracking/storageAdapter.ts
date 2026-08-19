@@ -77,8 +77,12 @@ export class AdaptiveStorageAdapter implements StatsStorageAdapter {
     if (isSystemPath(path)) {
       const fs = this.nodeRequire?.("fs");
       if (fs) {
-        const dir = path.slice(0, Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")));
-        await fs.promises.mkdir(dir, { recursive: true });
+        // 无分隔符路径（异常输入）跳过建目录：slice(0, -1) 会截错目录名
+        const sep = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+        if (sep > 0) {
+          const dir = path.slice(0, sep);
+          await fs.promises.mkdir(dir, { recursive: true });
+        }
         // 原子写：先写临时文件再 rename
         const tmp = path + ".tmp";
         await fs.promises.writeFile(tmp, content, "utf8");
