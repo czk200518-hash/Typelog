@@ -70,6 +70,13 @@ describe("parseMinutesSeconds 时长输入解析", () => {
     expect(parseMinutesSeconds("abc")).toBe(null);
     expect(parseMinutesSeconds("1分60秒")).toBe(null);
   });
+
+  it("超过上限（7 天 = 10080 分钟）返回 null，防止溢出", () => {
+    expect(parseMinutesSeconds("10080")).toBe(10080); // 边界值合法
+    expect(parseMinutesSeconds("10081")).toBe(null);
+    expect(parseMinutesSeconds("20000分")).toBe(null);
+    expect(parseMinutesSeconds("1e308")).toBe(null);
+  });
 });
 
 describe("weekKeys / weekSum 周聚合（功能 7）", () => {
