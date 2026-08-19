@@ -202,6 +202,23 @@ describe("StatsStore 三层存储", () => {
     expect(store.getFileStats("/v/legacy.md")).toBeDefined();
   });
 
+  it("purgeInactiveFiles：同步清理被删文件的 daySeries 孤儿采样", async () => {
+    await store.load();
+    const now = Date.now();
+    const dayMs = 86_400_000;
+    const today = dateKey(new Date(now));
+    store.touchOpen("/v/old.md", now - 200 * dayMs);
+    store.recordDaySample("/v/old.md", today, { t: now, delta: 10, gross: 20 });
+    store.recordDaySample("/v/old.md", "2020-01-01", { t: 1, delta: 5, gross: 5 });
+    store.recordDaySample("/v/new.md", today, { t: now, delta: 3, gross: 3 });
+    const removed = store.purgeInactiveFiles(now - 180 * dayMs);
+    expect(removed).toBe(1);
+    expect(store.getDaySeries("/v/old.md", today)).toBeUndefined();
+    expect(store.getDaySeries("/v/old.md", "2020-01-01")).toBeUndefined();
+    // 未清理文件的采样保留
+    expect(store.getDaySeries("/v/new.md", today)).toHaveLength(1);
+  });
+
   it("pruneOldDailyKeys：裁剪过期 daily/heatmap 键，保留最近键", async () => {
     await store.load();
     const g = store.getGlobalStats();
@@ -400,6 +417,37 @@ describe("StatsStore 三层存储", () => {
       store.applyImport(data, "overwrite", null);
       expect(store.getGlobalStats().grossTypedTotal).toBe(0);
       expect(store.getGlobalStats().dailyGrossByDate["2026-08-01"] ?? 0).toBe(0);
+    });
+
+    it("原型污染防护：备份含 __proto__/constructor 键被丢弃，不污染 Object.prototype", async () => {
+      await store.load();
+      // 用 JSON.parse 构造：其生成的 __proto__ 是自有可枚举属性（模拟真实恶意备份文件）
+      const malicious = JSON.parse(
+        '{"笔记/a.md":{"path":"笔记/a.md","grossTyped":100,"deletedChars":0,"activeTimeMs":0,"firstSeen":1,"lastOpened":2},' +
+          '"__proto__":{"path":"__proto__","grossTyped":999,"deletedChars":999,"activeTimeMs":999,"firstSeen":999,"lastOpened":999},' +
+          '"constructor":{"path":"constructor","grossTyped":888,"deletedChars":0,"activeTimeMs":0,"firstSeen":1,"lastOpened":2}}',
+      ) as Record<string, unknown>;
+      const imported = store.applyImport(backupData({ fileStats: malicious }), "merge", null);
+      // 仅正常文件计入，危险键被丢弃
+      expect(imported).toBe(1);
+      expect(store.getFileStats("笔记/a.md")?.grossTyped).toBe(100);
+      expect(store.getFileStats("__proto__")).toBeUndefined();
+      expect(store.getFileStats("constructor")).toBeUndefined();
+      // Object.prototype 未被污染（合并分支曾会向其写入 grossTyped 等）
+      expect((Object.prototype as Record<string, unknown>).grossTyped).toBeUndefined();
+      expect((Object.prototype as Record<string, unknown>).deletedChars).toBeUndefined();
+      expect((Object.prototype as Record<string, unknown>).activeTimeMs).toBeUndefined();
+    });
+
+    it("原型污染防护：加载存储文件时危险键同样被丢弃", async () => {
+      const malicious =
+        '{"version":1,"files":{"a.md":{"path":"a.md","grossTyped":5,"deletedChars":0,"activeTimeMs":0,"firstSeen":1,"lastOpened":2},' +
+        '"__proto__":{"path":"__proto__","grossTyped":1,"deletedChars":0,"activeTimeMs":0,"firstSeen":1,"lastOpened":2}}}';
+      adapter.data.set(PATHS.fileStats, malicious);
+      await store.load();
+      expect(store.getFileStats("a.md")?.grossTyped).toBe(5);
+      expect(store.getFileStats("__proto__")).toBeUndefined();
+      expect((Object.prototype as Record<string, unknown>).grossTyped).toBeUndefined();
     });
 
     it("导入后写盘，重新加载保持一致", async () => {
