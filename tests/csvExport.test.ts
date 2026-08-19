@@ -30,6 +30,12 @@ describe("优化 2：CSV 多区块导出", () => {
     expect(csvField("正常文本")).toBe("正常文本");
   });
 
+  it("csvField 公式注入防护：制表符/回车前缀同样前置单引号", () => {
+    expect(csvField("\t=1+1")).toBe("'\t=1+1");
+    expect(csvField("\r=cmd")).toBe("\"'\r=cmd\"");
+    expect(csvField("-=sum")).toBe("'-=sum");
+  });
+
   it("全部内容：四区块齐全，区块头以 # 注释（防公式注入）", () => {
     const csv = buildCsvExport(globalStats(), [fileStats("笔记/日记.md", 15230)], "all");
     const lines = csv.split("\n");
