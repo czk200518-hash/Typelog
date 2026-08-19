@@ -83,12 +83,20 @@ describe("diffText 全文 diff", () => {
     expect(d.inserted).toBe(midNew);
   });
 
-  it("差异区超过 64KB：全文近似（统计口径不变）", () => {
+  it("差异区超过 64KB：按差异区统计，不把未变文本计入", () => {
     const big = "x".repeat(70 * 1024);
     const oldText = "head" + big + "tail";
     const newText = "head" + "tail";
     const d = diffText(oldText, newText);
-    expect(d.removed).toBe(oldText);
-    expect(d.inserted).toBe(newText);
+    expect(d.removed).toBe(big);
+    expect(d.inserted).toBe("");
+  });
+
+  it("中部插入超 64KB：仅统计插入部分（旧实现会把全文误计为删除+输入）", () => {
+    const prefix = "a".repeat(500 * 1024);
+    const big = "b".repeat(70 * 1024);
+    const d = diffText(prefix + "end", prefix + big + "end");
+    expect(d.removed).toBe("");
+    expect(d.inserted).toBe(big);
   });
 });
