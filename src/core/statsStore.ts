@@ -39,6 +39,15 @@ function emptyGlobal(): GlobalStats {
   };
 }
 
+// 反序列化危险键集合：若外部 JSON 数据携带 __proto__/constructor/prototype 键，
+// 直接赋值会命中对象原型链（原型污染，甚至污染 Object.prototype），统一丢弃
+const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+// 反序列化对象键是否安全（跳过危险键，防原型污染）
+function isSafeKey(k: string): boolean {
+  return !UNSAFE_KEYS.has(k);
+}
+
 // ---- 加载数据消毒：仅保留有限数值与合法结构，避免损坏/旧版本数据污染统计 ----
 
 function finiteNum(v: unknown): number {
@@ -62,7 +71,10 @@ function sanitizeFileStats(f: unknown): FileStats | null {
 function sanitizeNumMap(v: unknown): Record<string, number> {
   if (!v || typeof v !== "object") return {};
   const out: Record<string, number> = {};
-  for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = finiteNum(val);
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (!isSafeKey(k)) continue;
+    out[k] = finiteNum(val);
+  }
   return out;
 }
 
@@ -70,6 +82,7 @@ function sanitizeHeatmap(v: unknown): Record<string, HeatmapDaySlots> {
   if (!v || typeof v !== "object") return {};
   const out: Record<string, HeatmapDaySlots> = {};
   for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (!isSafeKey(k)) continue;
     if (Array.isArray(val)) {
       // 旧格式（优化 3 之前）：number[] 即活跃 ms，字数维度补 0
       out[k] = { activeMs: normalize24(val), grossByHour: new Array<number>(24).fill(0) };
@@ -122,9 +135,11 @@ function sanitizeDaySeries(v: unknown): Record<string, Record<string, MinuteSamp
   if (!v || typeof v !== "object") return {};
   const out: Record<string, Record<string, MinuteSample[]>> = {};
   for (const [dk, byPath] of Object.entries(v as Record<string, unknown>)) {
+    if (!isSafeKey(dk)) continue;
     if (!byPath || typeof byPath !== "object") continue;
     const day: Record<string, MinuteSample[]> = {};
     for (const [p, arr] of Object.entries(byPath as Record<string, unknown>)) {
+      if (!isSafeKey(p)) continue;
       if (!Array.isArray(arr)) continue;
       const cleaned: MinuteSample[] = [];
       for (const s of arr) {
@@ -146,6 +161,7 @@ function sanitizeDaySeries(v: unknown): Record<string, Record<string, MinuteSamp
 function normalizeImportedKeys(files: Record<string, FileStats>, basePath: string | null): Record<string, FileStats> {
   const out: Record<string, FileStats> = {};
   const addFile = (rel: string, f: FileStats) => {
+    if (!isSafeKey(rel)) return; // 防原型污染：丢弃 __proto__/constructor/prototype 键
     const t = out[rel];
     if (t) {
       t.grossTyped += f.grossTyped;
@@ -207,6 +223,7 @@ export class StatsStore {
         if (data && typeof data.files === "object" && data.files !== null) {
           const cleaned: Record<string, FileStats> = {};
           for (const [k, v] of Object.entries(data.files as Record<string, unknown>)) {
+            if (!isSafeKey(k)) continue; // 防原型污染
             const f = sanitizeFileStats(v);
             if (f) cleaned[k] = f;
           }
@@ -307,6 +324,10 @@ export class StatsStore {
   }
 
   private ensureFile(path: string, now: number): FileStats {
+    // 防御纵深：危险键（__proto__ 等）读取会命中原型链，返回一次性临时对象而非写入存储
+    if (!isSafeKey(path)) {
+      return { path, grossTyped: 0, deletedChars: 0, activeTimeMs: 0, firstSeen: now, lastOpened: now };
+    }
     let f = this.files[path];
     if (!f) {
       f = { path, grossTyped: 0, deletedChars: 0, activeTimeMs: 0, firstSeen: now, lastOpened: now };
@@ -317,7 +338,8 @@ export class StatsStore {
 
   // ---- 查询 ----
   getFileStats(path: string): FileStats | undefined {
-    return this.files[path];
+    // 防御纵深：普通对象对 __proto__ 键的读取会命中 Object.prototype，直接返回 undefined
+    return isSafeKey(path) ? this.files[path] : undefined;
   }
 
   getAllFileStats(): FileStats[] {
@@ -380,6 +402,7 @@ export class StatsStore {
     const rawFiles: Record<string, FileStats> = {};
     if (raw.fileStats && typeof raw.fileStats === "object") {
       for (const [k, v] of Object.entries(raw.fileStats as Record<string, unknown>)) {
+        if (!isSafeKey(k)) continue; // 防原型污染
         const f = sanitizeFileStats(v);
         if (f) rawFiles[k] = f;
       }
@@ -538,6 +561,13 @@ export class StatsStore {
     for (const [k, f] of Object.entries(this.files)) {
       if (f.lastOpened > 0 && f.lastOpened < before) {
         delete this.files[k];
+        // 同步清理该文件在所有天的分钟采样（孤儿数据），避免清理后仍随写盘膨胀
+        for (const [dk, day] of Object.entries(this.daySeries)) {
+          if (Object.prototype.hasOwnProperty.call(day, k)) {
+            delete day[k];
+            if (Object.keys(day).length === 0) delete this.daySeries[dk];
+          }
+        }
         removed++;
       }
     }
