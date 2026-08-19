@@ -439,10 +439,11 @@ export default class TypeLogPlugin extends Plugin {
     }
   }
 
-  // 过滤已被删除的文件统计（报告/排行只展示当前 vault 中存在的文件）
+  // 过滤已被删除的文件统计（报告/排行只展示当前 vault 中存在的文件）。
+  // 一次性收集 vault 已加载文件路径为 Set，避免对每个文件逐个 getAbstractFileByPath（大 vault 下 O(N) 次 vault 查询）
   private filterExistingFiles<T extends { path: string }>(files: T[]): T[] {
-    const vault = this.app.vault;
-    return files.filter((f) => vault.getAbstractFileByPath(f.path) !== null);
+    const existing = new Set(this.app.vault.getAllLoadedFiles().map((f) => f.path));
+    return files.filter((f) => existing.has(f.path));
   }
 
   // 当前 vault 中仍存在的文件统计（排行/报告共用）
@@ -495,11 +496,11 @@ export default class TypeLogPlugin extends Plugin {
     if (!content) throw new Error(t("notice.importReadFail"));
     let parsed: { format?: unknown; version?: unknown; data?: unknown };
     try {
-      // JSON.parse 返回 any：用 unknown 类型注解接收（any→unknown 安全，规避 no-unsafe-assignment），
-      // 再经运行时校验后以必要断言收窄（规避 no-unnecessary-type-assertion）
+      // JSON.parse 返回 any：先以 unknown 接收（规避 no-unsafe-assignment），
+      // 再经运行时校验后收窄（对象类型属性均可选，无需断言）
       const raw: unknown = JSON.parse(content);
       if (typeof raw !== "object" || raw === null) throw new Error(t("notice.importInvalid"));
-      parsed = raw as { format?: unknown; version?: unknown; data?: unknown };
+      parsed = raw;
     } catch {
       throw new Error(t("notice.importInvalid"));
     }
