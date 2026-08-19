@@ -56,6 +56,7 @@ export class StatsEngine {
     this.activeMachine = new ActiveStateMachine(s.idleThresholdSec * 1000);
     this.editorTracker = new EditorTracker(
       deps.workspace,
+      deps.vault,
       () => ({
         includePasteInSpeed: this.deps.getSettings().includePasteInSpeed,
       }),
