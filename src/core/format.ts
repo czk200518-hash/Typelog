@@ -49,12 +49,15 @@ export function formatMinutesSeconds(minutes: number): string {
 
 // 解析时长输入为分钟数（失败返回 null）：
 // "25" / "1.5"（纯数字=分钟）、"1分30秒"、"1:30"、"5秒"
+// 上限 7 天（10080 分钟）：防止超大输入导致 formatMinutesSeconds 计算溢出显示异常
+const MAX_POMODORO_MINUTES = 7 * 24 * 60;
+
 export function parseMinutesSeconds(input: string): number | null {
   const s = input.trim();
   if (!s) return null;
   if (/^\d+(\.\d+)?$/.test(s)) {
     const n = parseFloat(s);
-    return isNaN(n) ? null : n;
+    return isNaN(n) || n > MAX_POMODORO_MINUTES ? null : n;
   }
   // X分Y秒 / X:Y / X分
   const ms = s.match(/^(\d+)\s*(?:分|:)\s*(\d{1,2})?\s*秒?$/);
@@ -62,7 +65,8 @@ export function parseMinutesSeconds(input: string): number | null {
     const mm = parseInt(ms[1], 10);
     const ss = ms[2] !== undefined ? parseInt(ms[2], 10) : 0;
     if (ss > 59) return null;
-    return mm + ss / 60;
+    const total = mm + ss / 60;
+    return total > MAX_POMODORO_MINUTES ? null : total;
   }
   // Y秒
   const sec = s.match(/^(\d{1,2})\s*秒$/);
